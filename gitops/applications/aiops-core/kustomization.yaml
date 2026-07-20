@@ -1,0 +1,7 @@
+# Kustomization placeholder for aiops-core applications.
+# Phase 2+: incident-api, postgresql, rca-agent, keep
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - rca-agent.yaml

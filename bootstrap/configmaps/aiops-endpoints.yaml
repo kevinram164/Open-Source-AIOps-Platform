@@ -1,0 +1,33 @@
+# External service endpoints — update after Phase 0 discovery.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aiops-endpoints
+  namespace: aiops-core
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+data:
+  # OpenShift Prometheus / Thanos Querier
+  # Internal service URL (preferred for in-cluster access)
+  PROMETHEUS_URL: "https://thanos-querier.openshift-monitoring.svc:9091"
+  # Alternative: use route hostname after discovery
+  # PROMETHEUS_URL: "https://thanos-querier-openshift-monitoring.apps.<cluster-domain>"
+
+  # Alertmanager (for reference — webhook is inbound)
+  ALERTMANAGER_URL: "https://alertmanager-main.openshift-monitoring.svc:9094"
+
+  # Coroot API — update namespace/route after discovery
+  COROOT_URL: "http://coroot-coroot.coroot.svc:8080"
+  # COROOT_URL: "https://coroot.apps.<cluster-domain>"
+  COROOT_NAMESPACE: "coroot"
+
+  # Incident API (internal, deployed in Phase 2)
+  INCIDENT_API_URL: "http://incident-api.aiops-core.svc:8080"
+
+  # RCA Agent (internal, deployed in Phase 3)
+  RCA_AGENT_URL: "http://rca-agent.aiops-core.svc:8080"
+
+  # PostgreSQL (internal, deployed in Phase 2)
+  POSTGRESQL_HOST: "postgresql.aiops-core.svc"
+  POSTGRESQL_PORT: "5432"
+  POSTGRESQL_DATABASE: "aiops"

@@ -1,0 +1,19 @@
+# PostgreSQL persistent volume claim.
+# StorageClass must be configured for your homelab NFS.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-data
+  namespace: aiops-core
+  labels:
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: open-aiops-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  # IMPORTANT: Replace with your StorageClass name from `oc get storageclass`
+  storageClassName: nfs-client

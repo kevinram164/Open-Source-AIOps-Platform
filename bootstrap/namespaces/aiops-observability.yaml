@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aiops-observability
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+    aiops.platform/role: observability
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    openshift.io/description: "AIOps observability — Grafana dashboards and integrations"

@@ -1,0 +1,38 @@
+# Secrets — never commit real values
+bootstrap/secrets/*.secret.yaml
+*.secret.yaml
+!*.secret.yaml.template
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+.env.*
+
+# Helm
+charts/*/charts/
+charts/*/Chart.lock

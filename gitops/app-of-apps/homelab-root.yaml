@@ -1,0 +1,26 @@
+# Root App of Apps for homelab AIOps platform.
+# Update spec.source.repoURL to your Git remote before applying.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aiops-homelab-root
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kiettt4/Open-Source-AIOps-Platform.git
+    targetRevision: main
+    path: gitops/app-of-apps/homelab
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

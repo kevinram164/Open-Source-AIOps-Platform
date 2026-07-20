@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aiops-platform-config
+  namespace: aiops-core
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+data:
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+
+  # Correlation settings (used in Phase 2)
+  CORRELATION_TIME_WINDOW_SECONDS: "300"
+  CORRELATION_MAX_ALERTS_PER_INCIDENT: "50"
+
+  # RCA settings (used in Phase 3)
+  OPENAI_MODEL: "gpt-4o"
+  OPENAI_MAX_TOKENS: "4096"
+  RCA_EVIDENCE_MAX_LOG_LINES: "100"
+  RCA_EVIDENCE_MAX_TRACE_SPANS: "50"
+  RCA_REQUEST_TIMEOUT_SECONDS: "120"
+
+  # Automation settings (used in Phase 4)
+  AUTOMATION_REQUIRES_APPROVAL: "true"
+  AUTOMATION_DEFAULT_TIMEOUT_SECONDS: "300"
+
+  # Platform metadata
+  PLATFORM_ENVIRONMENT: "homelab"
+  PLATFORM_CLUSTER_NAME: "homelab-openshift"

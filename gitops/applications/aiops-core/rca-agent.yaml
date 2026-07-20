@@ -1,0 +1,33 @@
+# RCA Agent — deployed via Helm chart (skeleton, Phase 3 logic).
+# Sync is manual in Phase 1 to avoid deploying incomplete service.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rca-agent
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kiettt4/Open-Source-AIOps-Platform.git
+    targetRevision: main
+    path: charts/rca-agent
+    helm:
+      valueFiles:
+        - ../../gitops/environments/homelab/values-rca-agent.yaml
+      parameters:
+        - name: image.tag
+          value: "0.1.0-skeleton"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: aiops-core
+  syncPolicy:
+    # Disabled auto-sync until Phase 3 — uncomment when ready
+    # automated:
+    #   prune: true
+    #   selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

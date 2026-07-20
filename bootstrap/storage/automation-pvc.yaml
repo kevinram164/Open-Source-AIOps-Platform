@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: automation-artifacts
+  namespace: aiops-automation
+  labels:
+    app.kubernetes.io/name: automation
+    app.kubernetes.io/component: artifacts
+    app.kubernetes.io/part-of: open-aiops-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 15Gi
+  storageClassName: nfs-client

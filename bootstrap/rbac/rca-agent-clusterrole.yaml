@@ -1,0 +1,53 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rca-agent-reader
+  labels:
+    app.kubernetes.io/name: rca-agent
+    app.kubernetes.io/component: rca
+    app.kubernetes.io/part-of: open-aiops-platform
+rules:
+  # Core workload resources — read only
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - events
+      - services
+      - endpoints
+      - persistentvolumeclaims
+      - configmaps
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: [""]
+    resources:
+      - nodes
+    verbs: ["get", "list", "watch"]
+
+  # Apps resources
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch"]
+
+  # Autoscaling
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch"]
+
+  # OpenShift deployment configs (if used by demo apps)
+  - apiGroups: ["apps.openshift.io"]
+    resources:
+      - deploymentconfigs
+    verbs: ["get", "list", "watch"]
+
+  # Metrics API for basic pod metrics (supplementary to Prometheus)
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - pods
+      - nodes
+    verbs: ["get", "list"]

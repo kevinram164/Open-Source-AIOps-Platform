@@ -1,0 +1,53 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aiops-observability-default-deny-ingress
+  namespace: aiops-observability
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aiops-observability-allow
+  namespace: aiops-observability
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from OpenShift ingress (Grafana UI)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-ingress
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Prometheus / PostgreSQL queries
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-monitoring
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: aiops-core
+    - ports:
+        - protocol: TCP
+          port: 443

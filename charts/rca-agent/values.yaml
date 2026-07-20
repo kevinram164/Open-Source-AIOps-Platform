@@ -1,0 +1,89 @@
+# Default values for rca-agent.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/kiettt4/open-aiops-rca-agent
+  tag: "0.1.0-skeleton"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: false
+  name: rca-agent
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 8080
+
+route:
+  enabled: false
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 2Gi
+
+config:
+  logLevel: INFO
+  useExistingConfigMap: true
+  existingConfigMapName: aiops-endpoints
+  existingPlatformConfigMap: aiops-platform-config
+
+openai:
+  existingSecret: openai-api-key
+  secretKey: OPENAI_API_KEY
+
+probes:
+  liveness:
+    path: /health/live
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    path: /health/ready
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: rca-agent
+
+volumes:
+  tmp:
+    enabled: true
+    sizeLimit: 64Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
