@@ -31,34 +31,28 @@ _SERVICE_HINTS: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"media[\s-]?worker", re.I), "npd-movie", "media-worker"),
 ]
 
-_OPS = re.compile(
-    r"noteworthy|đáng\s*lưu\s*ý|cao\s*tải|high\s*(cpu|load|memory)|"
-    r"crashloop|imagepull|oomkilled|pod\s*nào|node\s*nào|"
-    r"cluster\s*health|tình\s*trạng|what.?s\s*wrong|anything\s*(wrong|notable)|"
-    r"which\s*(node|pod)|list\s*(failing|bad)\s*pods",
-    re.I,
-)
 _RESTART_CMD = re.compile(
     r"(?:restart|rollout\s+restart|khởi\s*động\s*lại)\s+"
     r"(?:pod|deployment|deploy)?\s*([a-z0-9][a-z0-9._-]*)",
     re.I,
 )
 _NS_IN_Q = re.compile(r"(?:in|namespace|ns)\s+([a-z0-9][a-z0-9-]*)", re.I)
+# Only when operator clearly wants RCA / incident deep-dive
+_INVESTIGATE = re.compile(
+    r"\bwhy\b|tại\s*sao|gì\s*vậy|root\s*cause|rca|"
+    r"(?:is|are)\s+.+\s+down|bị\s*down|sự\s*cố|incident\s+(?:INC-|#)|"
+    r"phân\s*tích\s*(?:lỗi|incident|sự\s*cố)",
+    re.I,
+)
 
 
 def detect_intent(question: str) -> str:
+    """Platform ops Q&A is the default — not incident-centric."""
     if _RESTART_CMD.search(question):
         return "command_restart"
-    if _OPS.search(question):
-        return "ops_query"
-    # service / incident investigation keywords
-    if re.search(
-        r"why|gì\s*vậy|tại\s*sao|down|lỗi|fail|incident|rca|root\s*cause|payment|transfer",
-        question,
-        re.I,
-    ):
+    if _INVESTIGATE.search(question):
         return "investigate"
-    return "general"
+    return "ops_query"
 
 
 def _hints_from_question(question: str) -> tuple[str | None, str | None]:
@@ -210,17 +204,52 @@ async def list_remediations_for_incident(external_id: str) -> list[dict[str, Any
         return []
 
 
-async def fetch_ops_snapshot(namespace: str | None = None, focus: str | None = None) -> dict[str, Any]:
-    url = f"{settings.rca_agent_url.rstrip('/')}/api/v1/ops/snapshot"
+async def fetch_ops_context(
+    question: str, namespace: str | None = None
+) -> dict[str, Any]:
+    """Multi-facet platform context — answers many question types without topic routing."""
+    url = f"{settings.rca_agent_url.rstrip('/')}/api/v1/ops/context"
     try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            resp = await client.post(url, json={"namespace": namespace, "focus": focus})
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                url, json={"question": question, "namespace": namespace}
+            )
             if resp.status_code >= 400:
-                return {"warnings": [f"ops snapshot HTTP {resp.status_code}"], "noteworthy": []}
+                return {
+                    "warnings": [f"ops context HTTP {resp.status_code}"],
+                    "facts": {},
+                    "evidence": [],
+                    "summary": {},
+                }
             return resp.json()
     except Exception as exc:  # noqa: BLE001
-        log.warning("ops_snapshot_failed", error=str(exc))
-        return {"warnings": [str(exc)], "noteworthy": []}
+        log.warning("ops_context_failed", error=str(exc))
+        return {"warnings": [str(exc)], "facts": {}, "evidence": [], "summary": {}}
+
+
+async def recent_incidents_brief(
+    session: AsyncSession, *, namespace: str | None = None, limit: int = 8
+) -> list[dict[str, Any]]:
+    stmt = select(Incident).order_by(Incident.created_at.desc()).limit(limit)
+    if namespace:
+        stmt = (
+            select(Incident)
+            .where(Incident.namespace == namespace)
+            .order_by(Incident.created_at.desc())
+            .limit(limit)
+        )
+    rows = list((await session.execute(stmt)).scalars().all())
+    return [
+        {
+            "external_id": i.external_id,
+            "title": i.title,
+            "namespace": i.namespace,
+            "workload": i.workload,
+            "status": i.status.value,
+            "severity": i.severity.value if i.severity else None,
+        }
+        for i in rows
+    ]
 
 
 async def resolve_deployment(namespace: str, pod_name: str) -> str | None:
@@ -260,56 +289,41 @@ def _template_answer(*, incident: Incident, rca: dict[str, Any]) -> tuple[str, l
     return "\n\n".join(parts), evidence, recommendation
 
 
-def _ops_answer(question: str, snap: dict[str, Any]) -> tuple[str, list[str], str]:
-    notes = list(snap.get("noteworthy") or [])
-    evidence: list[str] = []
-    for key in ("crashloop_pods", "imagepull_pods", "oom_pods"):
-        for p in (snap.get(key) or [])[:8]:
-            evidence.append(
-                f"{key}: {p.get('namespace')}/{p.get('name')} "
-                f"{p.get('reason')} restarts={p.get('restarts')} msg={p.get('message') or ''}"
-            )
-    for n in snap.get("nodes") or []:
-        if n.get("ready") != "True":
-            evidence.append(f"node {n.get('name')} Ready={n.get('ready')}")
-
-    q = question.lower()
-    if "crashloop" in q:
-        items = snap.get("crashloop_pods") or []
-        if not items:
-            answer = "Không thấy pod nào đang CrashLoopBackOff trong phạm vi quét (đã bỏ qua openshift-/kube-)."
-        else:
-            lines = [f"- {p['namespace']}/{p['name']} ({p.get('reason')}, restarts={p.get('restarts')})" for p in items[:15]]
-            answer = "Pod CrashLoopBackOff:\n" + "\n".join(lines)
-    elif "imagepull" in q:
-        items = snap.get("imagepull_pods") or []
-        answer = (
-            "Không thấy ImagePullBackOff."
-            if not items
-            else "ImagePull:\n" + "\n".join(
-                f"- {p['namespace']}/{p['name']}: {p.get('message') or p.get('reason')}" for p in items[:15]
+def _ops_fallback_brief(question: str, payload: dict[str, Any]) -> tuple[str, list[str], str]:
+    """Fallback when LLM unavailable — show compact multi-facet brief, not one topic."""
+    summary = payload.get("summary") or {}
+    facts = payload.get("facts") or {}
+    evidence = list(payload.get("evidence") or [])[:20]
+    highlights = summary.get("highlights") or []
+    counts = summary.get("counts") or {}
+    parts = [
+        f"Câu hỏi: {question}",
+        f"Scope: {summary.get('scope', 'cluster')} · metrics={summary.get('metrics_source', 'n/a')}",
+    ]
+    if highlights:
+        parts.append("Highlights:\n" + "\n".join(f"- {h}" for h in highlights[:8]))
+    if counts:
+        parts.append(
+            "Counts: "
+            + ", ".join(f"{k}={v}" for k, v in counts.items() if v)
+        )
+    top = facts.get("top_cpu_pods") or []
+    if top:
+        parts.append(
+            "Top CPU:\n"
+            + "\n".join(
+                f"- {p.get('namespace')}/{p.get('name')}: {p.get('cpu')}" for p in top[:5]
             )
         )
-    elif re.search(r"node|cao\s*tải", q):
-        nodes = snap.get("nodes") or []
-        answer = "Node Ready status:\n" + "\n".join(
-            f"- {n.get('name')}: Ready={n.get('ready')} cpu={n.get('cpu_allocatable')} mem={n.get('memory_allocatable')}"
-            for n in nodes
-        )
-        answer += (
-            "\n\nLưu ý: snapshot hiện chưa có metrics CPU usage realtime "
-            "(cần Prometheus). Ready=False hoặc pod failure là tín hiệu đáng chú ý."
-        )
-    else:
-        answer = "Đáng lưu ý trên cluster:\n" + (
-            "\n".join(notes) if notes else "Không có cảnh báo lớn trong snapshot."
-        )
-
-    recommendation = (
-        "Nếu cần remediation (restart/scale), nói rõ namespace + deployment; "
-        "AIOps sẽ tạo pending remediation để bạn approve — không tự chạy."
+    parts.append(
+        "OpenAI chưa trả lời được câu hỏi cụ thể trong lần này — "
+        "deploy có API key thì assistant sẽ chọn đúng phần facts liên quan."
     )
-    return answer, evidence[:20], recommendation
+    return (
+        "\n\n".join(parts),
+        evidence,
+        "Hỏi lại bất kỳ câu ops nào; assistant dùng cùng platform context pack.",
+    )
 
 
 async def synthesize_with_openai(
@@ -318,14 +332,26 @@ async def synthesize_with_openai(
     incident: Incident | None,
     rca: dict[str, Any],
     remediations: list[dict[str, Any]],
-    ops_snapshot: dict[str, Any] | None = None,
+    ops_payload: dict[str, Any] | None = None,
+    recent_incidents: list[dict[str, Any]] | None = None,
 ) -> tuple[str, list[str], str, str] | None:
     if not settings.openai_api_key:
         return None
 
     context: dict[str, Any] = {
         "question": question,
-        "rca": {
+        "pending_remediations": remediations,
+        "recent_incidents": recent_incidents or [],
+    }
+    if ops_payload:
+        context["platform_context"] = {
+            "summary": ops_payload.get("summary"),
+            "facts": ops_payload.get("facts"),
+            "evidence": ops_payload.get("evidence"),
+            "warnings": ops_payload.get("warnings"),
+        }
+    if rca:
+        context["rca"] = {
             "symptom": rca.get("symptom"),
             "symptom_confidence": rca.get("symptom_confidence"),
             "probable_root_cause": rca.get("probable_root_cause"),
@@ -338,10 +364,7 @@ async def synthesize_with_openai(
             "suggested_actions": rca.get("suggested_actions"),
             "affected_service": rca.get("affected_service"),
             "affected_namespace": rca.get("affected_namespace"),
-        },
-        "pending_remediations": remediations,
-        "ops_snapshot_noteworthy": (ops_snapshot or {}).get("noteworthy"),
-    }
+        }
     if incident:
         context["incident"] = {
             "external_id": incident.external_id,
@@ -352,13 +375,16 @@ async def synthesize_with_openai(
             "severity": incident.severity.value if incident.severity else None,
         }
     system = (
-        "You are an OpenShift AIOps incident investigator and ops assistant. "
-        "Answer ONLY from the provided JSON context. "
-        "Clearly separate symptom vs root cause when both exist. "
-        "Return ONLY valid JSON with keys: answer, evidence (array), recommendation. "
-        "Do not invent metrics. Remediations stay pending until human approve. "
-        "If ops_snapshot is present, prioritize live cluster facts for ops questions. "
-        "Keep answer under 280 words. Vietnamese OK if the question is Vietnamese."
+        "You are a general OpenShift platform operations assistant. "
+        "The operator may ask ANY day-2 question (CPU, memory, nodes, deployments, "
+        "CrashLoop, ImagePull, incidents, capacity, what is noteworthy, etc.). "
+        "Use platform_context + recent_incidents + rca (if present). "
+        "Answer ONLY the asked question — pick the relevant facts; "
+        "do not dump unrelated sections. "
+        "If the needed fact is missing, say what is missing — do not invent. "
+        "Return ONLY valid JSON: answer, evidence (short strings copied/adapted from context), "
+        "recommendation. Remediations require human approve. "
+        "Keep under 280 words. Match the question language."
     )
     payload = {
         "model": settings.openai_model,
@@ -518,22 +544,58 @@ async def handle_chat(
     if intent == "ops_query":
         hint_ns, _ = _hints_from_question(question)
         ns = namespace or hint_ns
-        focus = None
-        ql = question.lower()
-        if "crashloop" in ql:
-            focus = "crashloop"
-        elif "imagepull" in ql:
-            focus = "imagepull"
-        elif "oom" in ql:
-            focus = "oom"
-        snap = await fetch_ops_snapshot(namespace=ns, focus=focus)
-        answer, evidence, recommendation = _ops_answer(question, snap)
+        ops = await fetch_ops_context(question, namespace=ns)
+        incidents_brief = await recent_incidents_brief(session, namespace=ns)
+        ops["recent_incidents"] = incidents_brief
+        answer, evidence, recommendation = _ops_fallback_brief(question, ops)
         synthesized = await synthesize_with_openai(
             question=question,
             incident=None,
             rca={},
             remediations=[],
-            ops_snapshot=snap,
+            ops_payload=ops,
+            recent_incidents=incidents_brief,
+        )
+        model = "template"
+        if synthesized:
+            answer, evidence, recommendation, model = synthesized
+        facts = ops.get("facts") or {}
+        summary = ops.get("summary") or {}
+        return _empty_response(
+            answer,
+            "ops_query",
+            evidence=evidence,
+            recommendation=recommendation,
+            ops_snapshot={
+                "mode": "platform_context",
+                "summary": summary,
+                "metrics_source": facts.get("metrics_source"),
+                "top_cpu_pods": facts.get("top_cpu_pods"),
+                "top_memory_pods": facts.get("top_memory_pods"),
+                "node_usage": facts.get("node_usage"),
+                "counts": summary.get("counts"),
+                "highlights": summary.get("highlights"),
+                "warnings": ops.get("warnings"),
+            },
+            model=model,
+        )
+
+    # investigate — bind to incident / RCA
+    incident = await resolve_incident(
+        session, question=question, namespace=namespace, incident_ref=incident_ref
+    )
+    if not incident:
+        # Still answer from platform context (many questions ≠ one incident)
+        ops = await fetch_ops_context(question, namespace=namespace)
+        incidents_brief = await recent_incidents_brief(session, namespace=namespace)
+        answer, evidence, recommendation = _ops_fallback_brief(question, ops)
+        synthesized = await synthesize_with_openai(
+            question=question,
+            incident=None,
+            rca={},
+            remediations=[],
+            ops_payload=ops,
+            recent_incidents=incidents_brief,
         )
         model = "template"
         if synthesized:
@@ -543,39 +605,8 @@ async def handle_chat(
             "ops_query",
             evidence=evidence,
             recommendation=recommendation,
-            ops_snapshot={
-                "noteworthy": snap.get("noteworthy"),
-                "crashloop_count": len(snap.get("crashloop_pods") or []),
-                "imagepull_count": len(snap.get("imagepull_pods") or []),
-                "oom_count": len(snap.get("oom_pods") or []),
-                "nodes": snap.get("nodes"),
-            },
+            ops_snapshot={"mode": "platform_context", "summary": ops.get("summary")},
             model=model,
-        )
-
-    # investigate / general — bind to incident
-    incident = await resolve_incident(
-        session, question=question, namespace=namespace, incident_ref=incident_ref
-    )
-    if not incident:
-        # fall back to ops snapshot for general "what's wrong"
-        if intent == "general" or _OPS.search(question):
-            snap = await fetch_ops_snapshot(namespace=namespace)
-            answer, evidence, recommendation = _ops_answer(question, snap)
-            return _empty_response(
-                answer,
-                "ops_query",
-                evidence=evidence,
-                recommendation=recommendation,
-                ops_snapshot={"noteworthy": snap.get("noteworthy")},
-                model="template",
-            )
-        return _empty_response(
-            "Không tìm thấy incident khớp service/workload bạn hỏi. "
-            "Ingest alert hoặc truyền incident_id / namespace / tên service rõ hơn "
-            "(ví dụ transfer-service).",
-            intent,
-            recommendation="Create or bind an incident first",
         )
 
     rca = await latest_rca(session, incident.id)

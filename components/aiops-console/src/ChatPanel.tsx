@@ -2,17 +2,18 @@ import { FormEvent, useState } from "react";
 import { askChat, ChatResponse } from "./api";
 
 const SUGGESTIONS = [
+  "Pods nào đang cao tải nhất?",
+  "Node nào đang dùng nhiều CPU?",
+  "Deployment nào trong npd-banking?",
+  "Có pod nào CrashLoopBackOff không?",
   "Why is Payment Service down?",
-  "Có điều gì đáng lưu ý không?",
-  "Có pod nào bị CrashLoopBackOff không?",
-  "restart transfer-service in npd-banking",
 ];
 
 type Props = { onRemediationsChanged?: () => void };
 
 export function ChatPanel({ onRemediationsChanged }: Props) {
-  const [question, setQuestion] = useState("Why is Payment Service down?");
-  const [namespace, setNamespace] = useState("npd-banking");
+  const [question, setQuestion] = useState("Pods nào đang cao tải nhất?");
+  const [namespace, setNamespace] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ChatResponse | null>(null);
@@ -43,11 +44,11 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
 
   return (
     <div className="panel">
-      <div className="hero-kicker">Situation room</div>
+      <div className="hero-kicker">Ops assistant</div>
       <h1>Ask the platform</h1>
       <p className="lead">
-        Incident investigator + ops Q&amp;A. Commands like restart create pending remediations —
-        never silent auto-run.
+        Hỏi bất kỳ thông tin vận hành: CPU/memory, node, deployment, lỗi pod, RCA, restart.
+        Không chỉ xoay quanh một incident — trả lời đúng câu bạn hỏi.
       </p>
 
       <div className="ask-shell">
@@ -59,10 +60,11 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
               className="chip"
               onClick={() => {
                 setQuestion(s);
-                if (s.toLowerCase().includes("movie")) setNamespace("npd-movie");
-                else if (s.toLowerCase().includes("đáng lưu ý") || s.toLowerCase().includes("crashloop"))
-                  setNamespace("");
-                else setNamespace("npd-banking");
+                const low = s.toLowerCase();
+                if (low.includes("movie")) setNamespace("npd-movie");
+                else if (low.includes("payment") || low.includes("npd-banking") || low.includes("banking"))
+                  setNamespace("npd-banking");
+                else setNamespace(""); // cluster-wide ops by default
               }}
             >
               {s}
@@ -75,17 +77,17 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
             rows={3}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask why a service is down…"
+            placeholder="Hỏi gì cũng được: CPU, node, deployment, CrashLoop, restart…"
             required
           />
           <div className="row">
             <div className="field">
-              <label htmlFor="ns">Namespace</label>
+              <label htmlFor="ns">Namespace (optional — trống = cluster)</label>
               <input
                 id="ns"
                 value={namespace}
                 onChange={(e) => setNamespace(e.target.value)}
-                placeholder="npd-banking"
+                placeholder="npd-banking hoặc để trống"
               />
             </div>
             <button
@@ -93,7 +95,7 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
               type="submit"
               disabled={loading || !question.trim()}
             >
-              {loading ? "Correlating…" : "Run analysis"}
+              {loading ? "Querying…" : "Ask"}
             </button>
           </div>
         </form>
@@ -117,6 +119,9 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
               <h2>Investigator briefing</h2>
               <div className="meta">
                 {result.intent && <span className="badge">{result.intent}</span>}
+                {result.ops_snapshot?.mode && (
+                  <span className="badge ok">{result.ops_snapshot.mode}</span>
+                )}
                 {result.error_subtype && (
                   <span className="badge warn">{result.error_subtype}</span>
                 )}

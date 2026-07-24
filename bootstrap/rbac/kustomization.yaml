@@ -5,4 +5,5 @@ resources:
   - rca-agent-serviceaccount.yaml
   - rca-agent-clusterrole.yaml
   - rca-agent-clusterrolebinding.yaml
+  - rca-agent-monitoring-view.yaml
   - remediation-rbac.yaml

@@ -29,11 +29,22 @@ export type ChatResponse = {
   nba: unknown;
   remediations: Remediation[];
   ops_snapshot?: {
+    mode?: string;
+    summary?: Record<string, unknown>;
+    metrics_source?: string;
+    top_cpu_pods?: unknown[];
+    top_memory_pods?: unknown[];
+    node_usage?: unknown[];
+    counts?: Record<string, number>;
+    highlights?: string[];
     noteworthy?: string[];
     crashloop_count?: number;
     imagepull_count?: number;
     oom_count?: number;
     nodes?: unknown[];
+    warnings?: string[];
+    facts_keys?: string[];
+    topic?: string;
   } | null;
   model: string | null;
 };
