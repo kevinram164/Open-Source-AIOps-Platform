@@ -30,12 +30,14 @@ curl -sS -X POST https://remediation-controller-aiops-automation.apps.ocp01.npd.
   -d '{
     "action": "scale-deployment",
     "namespace": "npd-movie",
-    "target": "phim-web",
+    "target": "REPLACE_WITH_REAL_DEPLOY_NAME",
     "parameters": {"replicas": 2},
     "reason": "recover from crashloop pressure"
   }'
 # rồi approve → execute như trên
+# Lấy tên thật: oc get deploy -n npd-movie
 ```
+
 
 ## Policy check
 
