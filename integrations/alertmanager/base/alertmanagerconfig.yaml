@@ -1,0 +1,25 @@
+# Alertmanager → Incident API (chỉ alert có label namespace = ns của resource này).
+# Bật trên OCP: cluster-monitoring-config → enableUserAlertmanagerConfig: true
+# Kiểm tra selector:
+#   oc get alertmanager main -n openshift-monitoring -o yaml | grep -A8 alertmanagerConfig
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: aiops-webhook
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+    alertmanagerConfig: aiops
+spec:
+  route:
+    receiver: aiops-webhook
+    groupBy:
+      - namespace
+      - alertname
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+  receivers:
+    - name: aiops-webhook
+      webhookConfigs:
+        - url: http://incident-api.aiops-core.svc.cluster.local:8080/api/v1/alerts
+          sendResolved: true

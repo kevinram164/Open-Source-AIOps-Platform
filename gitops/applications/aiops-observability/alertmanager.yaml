@@ -1,0 +1,73 @@
+# AlertmanagerConfig → Incident API (banking + movie + platform monitoring)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aiops-alertmanager-banking
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
+    targetRevision: main
+    path: integrations/alertmanager/overlays/npd-banking
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: npd-banking
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aiops-alertmanager-movie
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
+    targetRevision: main
+    path: integrations/alertmanager/overlays/npd-movie
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: npd-movie
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+---
+# Platform alerts (ns openshift-monitoring) — cần quyền cluster; sync thủ công nếu default project chặn
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aiops-alertmanager-platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
+    targetRevision: main
+    path: integrations/alertmanager/overlays/openshift-monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-monitoring
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true

@@ -1,0 +1,16 @@
+# OpenShift platform monitoring — bật AlertmanagerConfig từ user namespaces.
+# Nếu CM đã tồn tại với config khác: merge tay các key trong config.yaml trước khi sync.
+# Docs: enableUserAlertmanagerConfig
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+    app.kubernetes.io/component: alertmanager-integration
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  config.yaml: |
+    enableUserAlertmanagerConfig: true
