@@ -24,8 +24,9 @@ route:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
 
+# OCP restricted-v2: prefer emptyDir (arbitrary UID). PVC+fsGroup:472 bị SCC chặn.
 persistence:
-  enabled: true
+  enabled: false
   existingClaim: grafana-data
 
 admin:
@@ -41,15 +42,20 @@ postgres:
   userKey: username
   passwordKey: password
 
+# OpenShift restricted-v2 compatible (no fsGroup 472)
 podSecurityContext:
   runAsNonRoot: true
-  fsGroup: 472
-  supplementalGroups: [472]
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
+  runAsNonRoot: true
   capabilities:
-    drop: ["ALL"]
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
 
 resources:
   requests:

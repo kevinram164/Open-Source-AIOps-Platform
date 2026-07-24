@@ -19,8 +19,6 @@ ESO syncs `grafana-admin` + `grafana-postgres` into `aiops-observability`.
 
 ## OpenShift note
 
-Nếu pod Grafana bị SCC/`fsGroup` chặn PVC:
+Chart dùng **restricted-v2** (không `fsGroup: 472`). Data Grafana = emptyDir (lab OK; dashboard provision từ ConfigMap).
 
-```bash
-oc adm policy add-scc-to-user anyuid -z grafana -n aiops-observability
-```
+Không cần `anyuid` SCC.

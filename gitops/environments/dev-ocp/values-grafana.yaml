@@ -1,4 +1,4 @@
-# Grafana — Phase 5 (AIOps overview dashboard)
+# Grafana — Phase 5 (OpenShift restricted-v2)
 replicaCount: 1
 
 image:
@@ -12,9 +12,9 @@ route:
   enabled: true
   host: grafana-aiops-observability.apps.ocp01.npd.co
 
+# emptyDir — tránh fsGroup 472 / PVC permission trên restricted-v2
 persistence:
-  enabled: true
-  existingClaim: grafana-data
+  enabled: false
 
 admin:
   existingSecret: grafana-admin
@@ -28,6 +28,20 @@ postgres:
   database: aiops
   userKey: username
   passwordKey: password
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
 
 resources:
   requests:

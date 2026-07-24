@@ -47,7 +47,7 @@ data:
         disableDeletion: false
         updateIntervalSeconds: 30
         options:
-          path: /var/lib/grafana/dashboards/aiops
+          path: /etc/grafana/dashboards/aiops
 ---
 apiVersion: v1
 kind: ConfigMap
