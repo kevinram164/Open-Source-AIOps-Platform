@@ -18,9 +18,9 @@ Argo apps: `aiops-alertmanager-*` (qua `aiops-observability`).
 
 ## Policy Mode B — auto-onboard
 
-Khi **Mode B** bật, CronJob `remediation-controller-amc-sync` (ns `aiops-automation`) mỗi 15 phút tạo/cập nhật `AlertmanagerConfig/aiops-webhook` trên mọi namespace **không** nằm trong deny-list. Overlay banking/movie vẫn dùng được; sync sẽ đồng bộ cùng webhook URL.
+Khi **Mode B** bật, CronJob `remediation-controller-amc-sync` (ns `aiops-automation`) mỗi 15 phút tạo/cập nhật `AlertmanagerConfig/aiops-webhook` trên mọi namespace **không** nằm trong *observe* deny-list (mặc định chỉ bỏ `openshift-*` / `kube-*`). **Vault và platform khác vẫn được onboard alert.**
 
-Deny-list: ConfigMap `aiops-remediation-policy` (`openshift-*`, `kube-*`, vault, argocd, harbor, …).
+Remediation write vẫn bị chặn riêng trên infra (ConfigMap `aiops-remediation-policy` → `remediationDenyNamespaces`).
 
 ## 1) Bật User AlertmanagerConfig (OCP) — qua Argo
 

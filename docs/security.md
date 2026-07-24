@@ -86,8 +86,8 @@ Alert → Incident API → RCA Agent
 **Mode B (đã chọn):** observe + RCA + remediation (có approve) cho **mọi namespace** trừ system/infra deny-list.
 
 - Policy ConfigMap: `aiops-remediation-policy` (`aiops-automation`)
-- Deny prefixes: `openshift-`, `kube-`
-- Deny namespaces: `default`, `vault`, `argocd`, `harbor`, `postgres`, … (xem ConfigMap)
+- **Observe (AMC/alert):** hầu hết ns trừ `openshift-*` / `kube-*` — **có** `vault`, Argo, Harbor…
+- **Remediation (write):** cấm platform/infra (`vault`, `argocd`, `harbor`, …) — theo dõi được nhưng không auto-fix
 - Action allowlist: `restart-deployment`, `scale-deployment`, `gitops-scale`, `ansible-runbook`
 - Approval state machine: `pending → approved → executing → completed/failed`
 - AMC sync CronJob: tạo `AlertmanagerConfig/aiops-webhook` tự động trên ns được phép

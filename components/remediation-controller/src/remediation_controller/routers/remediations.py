@@ -25,8 +25,10 @@ async def get_policy() -> dict:
     return {
         "policyMode": p.policy_mode,
         "requireApproval": p.require_approval,
-        "denyNamespacePrefixes": p.deny_namespace_prefixes,
-        "denyNamespaces": p.deny_namespaces,
+        "observeDenyNamespacePrefixes": p.observe_deny_namespace_prefixes,
+        "observeDenyNamespaces": p.observe_deny_namespaces,
+        "remediationDenyNamespacePrefixes": p.remediation_deny_namespace_prefixes,
+        "remediationDenyNamespaces": p.remediation_deny_namespaces,
         "allowedActions": p.allowed_actions,
         "maxScaleReplicas": p.max_scale_replicas,
     }
@@ -40,10 +42,10 @@ async def create_remediation(
     policy = load_policy()
     if not policy.allows_action(body.action):
         raise HTTPException(status_code=400, detail=f"action not allowed: {body.action}")
-    if body.action != "ansible-runbook" and not policy.allows_namespace(body.namespace):
+    if body.action != "ansible-runbook" and not policy.allows_remediation_namespace(body.namespace):
         raise HTTPException(
             status_code=403,
-            detail=f"namespace denied by policy Mode {policy.policy_mode}: {body.namespace}",
+            detail=f"namespace denied for remediation (Mode {policy.policy_mode}): {body.namespace}",
         )
     if body.action in {"scale-deployment", "gitops-scale"}:
         replicas = int(body.parameters.get("replicas", 1))
@@ -125,8 +127,8 @@ async def execute(
         raise HTTPException(status_code=404, detail="not found")
     if policy.require_approval and row.status != RemediationStatusDB.approved:
         raise HTTPException(status_code=409, detail="approval required before execute")
-    if row.action != "ansible-runbook" and not policy.allows_namespace(row.namespace):
-        raise HTTPException(status_code=403, detail="namespace denied by policy")
+    if row.action != "ansible-runbook" and not policy.allows_remediation_namespace(row.namespace):
+        raise HTTPException(status_code=403, detail="namespace denied for remediation")
 
     row.status = RemediationStatusDB.executing
     await store.save(session, row, actor="system", action_type="remediation.executing")

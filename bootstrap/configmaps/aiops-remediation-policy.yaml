@@ -1,5 +1,6 @@
-# AIOps Policy Mode B — observe+RCA+remediation (approval) for all non-system namespaces.
-# Remediation DENY list protects platform/infra; everything else is eligible after human approve.
+# AIOps Policy Mode B
+# Observe (Alertmanager/AMC): hầu hết cluster trừ system (openshift-/kube-).
+# Remediation (write): cấm platform/infra — vault được theo dõi nhưng không auto-fix.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,12 +13,19 @@ data:
   policy.yaml: |
     policyMode: B
     requireApproval: true
-    # Observe/RCA: effectively all namespaces (RCA ClusterRole is cluster-wide).
-    # Remediation: allowed unless matched by deny* below.
-    denyNamespacePrefixes:
+
+    # --- Observe / AMC sync / alert ingest ---
+    # Vault, Argo, Harbor, Postgres… VẪN nhận AlertmanagerConfig → Incident API.
+    observeDenyNamespacePrefixes:
       - openshift-
       - kube-
-    denyNamespaces:
+    observeDenyNamespaces: []
+
+    # --- Remediation (restart / scale / gitops / runbook write) ---
+    remediationDenyNamespacePrefixes:
+      - openshift-
+      - kube-
+    remediationDenyNamespaces:
       - default
       - vault
       - argocd
@@ -32,7 +40,7 @@ data:
       - aiops-core
       - aiops-automation
       - aiops-observability
-    # npd-banking, npd-movie, and future app namespaces are ALLOWED (Mode B)
+
     allowedActions:
       - restart-deployment
       - scale-deployment

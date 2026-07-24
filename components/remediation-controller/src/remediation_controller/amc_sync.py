@@ -73,7 +73,7 @@ def main() -> int:
     created = updated = skipped = errors = 0
     for ns in core.list_namespace().items:
         name = ns.metadata.name
-        if not policy.allows_namespace(name):
+        if not policy.allows_observe_namespace(name):
             skipped += 1
             continue
         body = _desired_body(webhook)
