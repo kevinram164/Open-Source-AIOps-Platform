@@ -19,6 +19,37 @@ from incident_api.nba import create_pending_remediations
 
 log = structlog.get_logger()
 
+
+def _as_str_list(value: Any, *, limit: int = 40) -> list[str]:
+    """Normalize evidence to list[str]. Never list(string) → char-by-char."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        # bullet / newline separated blob from LLM
+        if "\n" in text:
+            return [ln.strip(" -•\t") for ln in text.splitlines() if ln.strip()][:limit]
+        return [text][:limit]
+    if isinstance(value, list):
+        out: list[str] = []
+        for item in value:
+            if isinstance(item, str) and item.strip():
+                # skip accidental single-char noise from bad list(string)
+                if len(item) == 1 and item.isalnum():
+                    continue
+                out.append(item.strip())
+            elif item is not None:
+                out.append(str(item))
+        # If we filtered everything because LLM returned char array, rejoin
+        if not out and value and all(isinstance(x, str) and len(x) == 1 for x in value):
+            joined = "".join(value).strip()
+            return [joined] if joined else []
+        return out[:limit]
+    return [str(value)][:limit]
+
+
 # Demo aliases for banking / movie lab
 _SERVICE_HINTS: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"payment|transfer[\s_-]?service|transfer", re.I), "npd-banking", "transfer-service"),
@@ -293,7 +324,7 @@ def _ops_fallback_brief(question: str, payload: dict[str, Any]) -> tuple[str, li
     """Fallback when LLM unavailable — show compact multi-facet brief, not one topic."""
     summary = payload.get("summary") or {}
     facts = payload.get("facts") or {}
-    evidence = list(payload.get("evidence") or [])[:20]
+    evidence = _as_str_list(payload.get("evidence"), limit=20)
     highlights = summary.get("highlights") or []
     counts = summary.get("counts") or {}
     parts = [
@@ -415,7 +446,7 @@ async def synthesize_with_openai(
             data = json.loads(content)
             return (
                 str(data.get("answer") or ""),
-                list(data.get("evidence") or []),
+                _as_str_list(data.get("evidence")),
                 str(data.get("recommendation") or ""),
                 settings.openai_model,
             )

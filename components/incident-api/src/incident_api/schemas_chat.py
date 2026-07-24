@@ -1,6 +1,8 @@
 """Chat API schemas — investigator response."""
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class ChatRequest(BaseModel):
@@ -40,3 +42,27 @@ class ChatResponse(BaseModel):
     remediations: list[dict] = Field(default_factory=list)
     ops_snapshot: dict | None = None
     model: str | None = None
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _coerce_evidence(cls, v: Any) -> list[str]:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            text = v.strip()
+            if not text:
+                return []
+            if "\n" in text:
+                return [ln.strip(" -•\t") for ln in text.splitlines() if ln.strip()]
+            return [text]
+        if isinstance(v, list):
+            # Repair accidental list("NodeUsage...") → chars
+            if v and all(isinstance(x, str) and len(x) == 1 for x in v):
+                joined = "".join(v).strip()
+                return [joined] if joined else []
+            return [
+                str(x).strip()
+                for x in v
+                if str(x).strip() and not (isinstance(x, str) and len(x) == 1)
+            ]
+        return [str(v)]

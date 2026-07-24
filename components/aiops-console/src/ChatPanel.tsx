@@ -180,16 +180,24 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
 
           <div className="answer">{result.answer}</div>
 
-          {result.evidence?.length > 0 && (
-            <>
-              <div className="section-title">Evidence stream</div>
-              <ul className="evidence">
-                {result.evidence.map((e) => (
-                  <li key={e}>{e}</li>
-                ))}
-              </ul>
-            </>
-          )}
+          {(() => {
+            const items = Array.isArray(result.evidence)
+              ? result.evidence.filter((e) => typeof e === "string" && e.length > 1)
+              : typeof result.evidence === "string" && result.evidence
+                ? [result.evidence]
+                : [];
+            if (!items.length) return null;
+            return (
+              <>
+                <div className="section-title">Evidence stream</div>
+                <ul className="evidence">
+                  {items.map((e, i) => (
+                    <li key={`${i}-${e.slice(0, 24)}`}>{e}</li>
+                  ))}
+                </ul>
+              </>
+            );
+          })()}
 
           {result.recommendation && (
             <div className="rec">
