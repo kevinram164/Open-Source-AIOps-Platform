@@ -80,27 +80,33 @@ Chi tiết sizing: [docs/resource-sizing.md](docs/resource-sizing.md)
 
 Chạy các lệnh trong [docs/discovery.md](docs/discovery.md) và gửi output (không gửi secret values).
 
-### 2. Phase 1 — Bootstrap
+### 2. Phase 1 — GitOps (Argo CD)
+
+Không dùng `oc apply -k bootstrap/` trên lab này. Bootstrap cũng là Application Argo (`aiops-bootstrap`).
 
 ```bash
-# Đăng nhập OpenShift
-oc login <api-server> --token=<token>
-
-# Tạo namespaces, RBAC, NetworkPolicy, storage
-oc apply -k bootstrap/
-
-# Tạo secrets từ template (chỉnh sửa trước khi apply)
-cp bootstrap/secrets/openai-api-key.secret.yaml.template \
-   bootstrap/secrets/openai-api-key.secret.yaml
-# Chỉnh OPENAI_API_KEY, sau đó:
-oc apply -f bootstrap/secrets/openai-api-key.secret.yaml
-
-# Cấu hình endpoints (chỉnh values theo cluster thực tế)
-oc apply -f bootstrap/configmaps/aiops-endpoints.yaml
-
-# Triển khai qua Argo CD (sau khi push repo lên remote)
+# 1) Push repo Open-Source-AIOps-Platform (nhánh main) lên remote
+# 2) Đăng ký root App of Apps MỘT LẦN (UI Argo hoặc lệnh dưới — đây là điểm vào duy nhất):
 oc apply -f gitops/app-of-apps/dev-ocp-root.yaml
+
+# Argo sẽ tạo/sync:
+#   aiops-bootstrap      → path bootstrap/  (ns, RBAC, NetPol, PVC, ConfigMap)
+#   aiops-core           → charts/apps Phase 2+ (manual sync cho đến khi sẵn sàng)
+#   aiops-observability
+#   aiops-automation
+#   aiops-demo
 ```
+
+Secrets (OpenAI) **không** commit Git — tạo qua Vault/ESO hoặc một lần:
+
+```bash
+oc create secret generic openai-api-key \
+  -n aiops-core \
+  --from-literal=OPENAI_API_KEY='sk-...' \
+  --dry-run=client -o yaml | oc apply -f -
+```
+
+(Namespace `aiops-core` phải đã được `aiops-bootstrap` sync trước.)
 
 ### 3. Kiểm tra
 
