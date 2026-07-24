@@ -10,7 +10,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/kiettt4/Open-Source-AIOps-Platform.git
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
     targetRevision: main
     path: bootstrap
   destination:
@@ -32,7 +32,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/kiettt4/Open-Source-AIOps-Platform.git
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
     targetRevision: main
     path: gitops/applications/aiops-core
   destination:
@@ -52,7 +52,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/kiettt4/Open-Source-AIOps-Platform.git
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
     targetRevision: main
     path: gitops/applications/aiops-observability
   destination:
@@ -72,7 +72,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/kiettt4/Open-Source-AIOps-Platform.git
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
     targetRevision: main
     path: gitops/applications/aiops-automation
   destination:
@@ -92,7 +92,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/kiettt4/Open-Source-AIOps-Platform.git
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
     targetRevision: main
     path: gitops/applications/aiops-demo
   destination:

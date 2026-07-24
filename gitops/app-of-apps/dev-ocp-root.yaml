@@ -12,7 +12,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/kiettt4/Open-Source-AIOps-Platform.git
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
     targetRevision: main
     path: gitops/app-of-apps/dev-ocp
   destination:
