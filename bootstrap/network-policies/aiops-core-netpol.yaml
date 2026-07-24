@@ -1,5 +1,5 @@
-# NetworkPolicy for aiops-core namespace.
-# OpenShift SDN/OVN supports NetworkPolicy. Adjust if using different CNI.
+# NetworkPolicy for aiops-core — ingress restrictive; egress open (lab).
+# Tránh chặn DNS/postgres-ha (gaierror Temporary failure in name resolution).
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -25,94 +25,27 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # Allow traffic within aiops-core namespace
     - from:
         - podSelector: {}
-    # Allow from aiops-observability (Grafana queries)
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: aiops-observability
-    # Allow from aiops-automation (remediation triggers)
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: aiops-automation
-    # Allow from OpenShift router (Route → incident-api)
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: openshift-ingress
-    # Allow from openshift-monitoring (Alertmanager webhooks)
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: openshift-monitoring
 ---
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: aiops-core-allow-egress
-  namespace: aiops-core
-  labels:
-    app.kubernetes.io/part-of: open-aiops-platform
-spec:
-  podSelector: {}
-  policyTypes:
-    - Egress
-  egress:
-    # DNS
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: openshift-dns
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    # Internal namespace traffic (PostgreSQL, inter-service)
-    - to:
-        - podSelector: {}
-    # Kubernetes API
-    - to:
-        - namespaceSelector: {}
-      ports:
-        - protocol: TCP
-          port: 443
-        - protocol: TCP
-          port: 6443
-    # OpenShift monitoring (Prometheus/Thanos)
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: openshift-monitoring
-      ports:
-        - protocol: TCP
-          port: 9091
-        - protocol: TCP
-          port: 9092
-        - protocol: TCP
-          port: 443
-    # Coroot (lab ns: observability)
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: observability
-      ports:
-        - protocol: TCP
-          port: 443
-        - protocol: TCP
-          port: 8080
-    # Shared postgres-ha
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: postgres
-      ports:
-        - protocol: TCP
-          port: 5432
-    # Harbor + OpenAI (external HTTPS)
-    - ports:
-        - protocol: TCP
-          port: 443
+# Egress: không restrict (lab). Xóa policy egress cũ nếu còn.
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: aiops-core-allow-egress
