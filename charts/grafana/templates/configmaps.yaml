@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grafana.fullname" . }}-datasources
+  labels:
+    {{- include "grafana.labels" . | nindent 4 }}
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: https://thanos-querier.openshift-monitoring.svc:9091
+        isDefault: false
+        jsonData:
+          tlsSkipVerify: true
+          timeInterval: 30s
+      - name: AIOps Postgres
+        uid: aiops-pg
+        type: postgres
+        access: proxy
+        url: $__env{GF_POSTGRES_HOST}:$__env{GF_POSTGRES_PORT}
+        user: $__env{GF_POSTGRES_USER}
+        isDefault: true
+        secureJsonData:
+          password: $__env{GF_POSTGRES_PASSWORD}
+        jsonData:
+          database: $__env{GF_POSTGRES_DATABASE}
+          sslmode: disable
+          postgresVersion: 1500
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grafana.fullname" . }}-dashboards-provider
+  labels:
+    {{- include "grafana.labels" . | nindent 4 }}
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: aiops
+        orgId: 1
+        folder: AIOps
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        options:
+          path: /var/lib/grafana/dashboards/aiops
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grafana.fullname" . }}-dashboard-aiops
+  labels:
+    {{- include "grafana.labels" . | nindent 4 }}
+data:
+  aiops-overview.json: |
+{{ .Files.Get "dashboards/aiops-overview.json" | indent 4 }}

@@ -64,3 +64,17 @@ curl -skS "$BASE/api/v1/remediations" | jq
 ```
 
 Remediations + `audit_log` persist in shared Postgres DB `aiops`.
+
+## 4) NBA — analyze → pending remediation
+
+```bash
+INC=https://incident-api-aiops-core.apps.ocp01.npd.co
+curl -skS -X POST "$INC/api/v1/incidents/UUID/analyze" | jq '{status, nba}'
+# Approve NBA draft ids under .nba.remediations[].id  (see docs/nba.md)
+```
+
+## 5) Grafana (Phase 5)
+
+- https://grafana-aiops-observability.apps.ocp01.npd.co  
+- Dashboard **AIOps / AIOps Overview**  
+- Vault: `secret/aiops/grafana` (`admin-user`, `admin-password`)

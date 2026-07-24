@@ -35,6 +35,10 @@ Vault (khuyến nghị, giống cinehome):
 vault kv put secret/aiops/db password='ChangeMe-Aiops-Pg-2026'
 vault kv put secret/aiops/app \
   DATABASE_URL='postgresql+asyncpg://aiops:ChangeMe-Aiops-Pg-2026@postgres-ha-postgresql-primary.postgres.svc.cluster.local:5432/aiops'
+# Grafana UI (Phase 5)
+vault kv put secret/aiops/grafana \
+  admin-user='admin' \
+  admin-password='ChangeMe-Aiops-Grafana-2026'
 # (optional) OPENAI_API_KEY trong secret/aiops/openai
 ```
 

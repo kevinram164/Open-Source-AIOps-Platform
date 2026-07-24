@@ -1,0 +1,38 @@
+# Grafana — Phase 5 (AIOps overview dashboard)
+replicaCount: 1
+
+image:
+  repository: docker.io/grafana/grafana
+  tag: "11.3.0"
+  pullPolicy: IfNotPresent
+
+fullnameOverride: grafana
+
+route:
+  enabled: true
+  host: grafana-aiops-observability.apps.ocp01.npd.co
+
+persistence:
+  enabled: true
+  existingClaim: grafana-data
+
+admin:
+  existingSecret: grafana-admin
+  userKey: admin-user
+  passwordKey: admin-password
+
+postgres:
+  existingSecret: grafana-postgres
+  host: postgres-ha-postgresql-primary.postgres.svc.cluster.local
+  port: "5432"
+  database: aiops
+  userKey: username
+  passwordKey: password
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

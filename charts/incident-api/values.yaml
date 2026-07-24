@@ -44,6 +44,7 @@ config:
   logLevel: INFO
   correlationTimeWindowSeconds: 300
   correlationMaxAlertsPerIncident: 50
+  nbaEnabled: true
 
 database:
   existingSecret: postgresql-credentials

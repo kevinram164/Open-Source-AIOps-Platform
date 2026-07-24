@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     )
 
     rca_agent_url: str = "http://rca-agent.aiops-core.svc:8080"
+    remediation_controller_url: str = (
+        "http://remediation-controller.aiops-automation.svc:8080"
+    )
+    nba_enabled: bool = True
     api_token: str = ""
     correlation_time_window_seconds: int = 300
     correlation_max_alerts_per_incident: int = 50

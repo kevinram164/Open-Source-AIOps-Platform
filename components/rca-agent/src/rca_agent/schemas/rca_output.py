@@ -15,6 +15,18 @@ class AnalyzeRequest(BaseModel):
     raw_alerts: list[dict] = Field(default_factory=list)
 
 
+class SuggestedAction(BaseModel):
+    """Typed Next Best Action for remediation-controller (still requires human approve)."""
+
+    action: str = Field(
+        description="restart-deployment | gitops-scale | scale-deployment | ansible-runbook"
+    )
+    namespace: str | None = None
+    target: str | None = None
+    parameters: dict = Field(default_factory=dict)
+    reason: str | None = None
+
+
 class RcaOutput(BaseModel):
     incident_id: str
     status: str = "analyzed"
@@ -25,6 +37,7 @@ class RcaOutput(BaseModel):
     supporting_evidence: list[str] = Field(default_factory=list)
     business_impact: str | None = None
     recommended_actions: list[str] = Field(default_factory=list)
+    suggested_actions: list[SuggestedAction] = Field(default_factory=list)
     automation_available: bool = False
     automation_requires_approval: bool = True
     recommended_runbook: str | None = None

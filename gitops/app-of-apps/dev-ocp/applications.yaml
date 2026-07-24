@@ -57,10 +57,14 @@ spec:
     path: gitops/applications/aiops-observability
   destination:
     server: https://kubernetes.default.svc
-    namespace: aiops-observability
+    namespace: argocd
   syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
     syncOptions:
       - CreateNamespace=false
+      - RespectNamespaceOverrides=true
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application

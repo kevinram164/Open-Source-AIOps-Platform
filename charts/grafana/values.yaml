@@ -1,0 +1,64 @@
+replicaCount: 1
+
+image:
+  repository: docker.io/grafana/grafana
+  tag: "11.3.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+fullnameOverride: grafana
+
+serviceAccount:
+  create: true
+  name: grafana
+
+service:
+  type: ClusterIP
+  port: 3000
+
+route:
+  enabled: true
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+persistence:
+  enabled: true
+  existingClaim: grafana-data
+
+admin:
+  existingSecret: grafana-admin
+  userKey: admin-user
+  passwordKey: admin-password
+
+postgres:
+  existingSecret: grafana-postgres
+  host: postgres-ha-postgresql-primary.postgres.svc.cluster.local
+  port: "5432"
+  database: aiops
+  userKey: username
+  passwordKey: password
+
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 472
+  supplementalGroups: [472]
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

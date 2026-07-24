@@ -144,7 +144,8 @@ open-aiops-platform/
 | 2 | Event ingestion — Alertmanager, Incident API | Done |
 | 3 | RCA Agent — evidence collection, OpenAI | Done |
 | 4 | Automation — approval, GitOps PR, Ansible runbook | Done |
-| 5 | Dashboard — Grafana | Planned |
+| 4.5 | Next Best Action — RCA → pending remediation | Done |
+| 5 | Dashboard — Grafana | Done |
 | 6 | Demo & testing | Planned |
 
 ## Bảo mật

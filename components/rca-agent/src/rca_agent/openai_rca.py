@@ -9,7 +9,7 @@ import httpx
 import structlog
 
 from rca_agent.config import settings
-from rca_agent.schemas.rca_output import AnalyzeRequest, RcaOutput
+from rca_agent.schemas.rca_output import AnalyzeRequest, RcaOutput, SuggestedAction
 
 log = structlog.get_logger()
 
@@ -17,9 +17,16 @@ _SYSTEM = """You are an OpenShift/Kubernetes SRE doing root cause analysis.
 Return ONLY valid JSON with keys:
 incident_id, status, affected_service, affected_namespace, probable_root_cause,
 confidence (0-1), supporting_evidence (array of strings), business_impact,
-recommended_actions (array of strings), automation_available (bool),
-automation_requires_approval (bool), recommended_runbook (string or null).
-Be concrete. Prefer evidence over speculation. status must be \"analyzed\"."""
+recommended_actions (array of strings),
+suggested_actions (array of objects with action, namespace, target, parameters, reason),
+automation_available (bool), automation_requires_approval (bool, usually true),
+recommended_runbook (string or null).
+suggested_actions.action MUST be one of:
+  restart-deployment, gitops-scale, scale-deployment, ansible-runbook
+Prefer gitops-scale over scale-deployment when changing replicas under GitOps/Argo CD.
+For node issues use ansible-runbook with parameters.playbook=node-diagnostics.
+Be concrete. Prefer evidence over speculation. status must be \"analyzed\".
+Do NOT invent namespaces; use the incident namespace when known."""
 
 
 async def synthesize_rca(req: AnalyzeRequest, evidence: list[str]) -> RcaOutput:
@@ -79,6 +86,20 @@ def _fallback(req: AnalyzeRequest, evidence: list[str], reason: str) -> RcaOutpu
         if any(x in line for x in ("OOMKilled", "CrashLoopBackOff", "ImagePullBackOff", "Evicted")):
             cause = line
             break
+    suggested: list = []
+    blob = "\n".join(evidence)
+    if req.namespace and req.workload and any(
+        x in blob for x in ("CrashLoopBackOff", "ImagePullBackOff", "OOMKilled")
+    ):
+        suggested.append(
+            SuggestedAction(
+                action="restart-deployment",
+                namespace=req.namespace,
+                target=req.workload,
+                parameters={},
+                reason="Fallback NBA: pod failure signature in evidence",
+            )
+        )
     return RcaOutput(
         incident_id=req.external_id or req.incident_id,
         status="analyzed",
@@ -93,7 +114,8 @@ def _fallback(req: AnalyzeRequest, evidence: list[str], reason: str) -> RcaOutpu
             "Compare recent deployments / config changes",
             "Validate resource limits and probes",
         ],
-        automation_available=False,
+        suggested_actions=suggested,
+        automation_available=bool(suggested),
         automation_requires_approval=True,
         recommended_runbook=None,
         model="fallback",

@@ -51,6 +51,20 @@ spec:
                   name: aiops-platform-config
                   key: PLATFORM_ENVIRONMENT
                   optional: true
+            - name: RCA_AGENT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aiops-endpoints
+                  key: RCA_AGENT_URL
+                  optional: true
+            - name: REMEDIATION_CONTROLLER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aiops-endpoints
+                  key: REMEDIATION_CONTROLLER_URL
+                  optional: true
+            - name: NBA_ENABLED
+              value: {{ .Values.config.nbaEnabled | default true | quote }}
           {{- if .Values.imagePullSecrets }}
           {{- end }}
           livenessProbe:

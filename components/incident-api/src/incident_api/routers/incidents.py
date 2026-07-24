@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_api.config import settings
 from incident_api.db import get_session
-from incident_api.models import Incident, IncidentStatus
+from incident_api.models import Incident, IncidentStatus, RcaResult
+from incident_api.nba import create_pending_remediations, map_rca_to_drafts
 from incident_api.schemas import IncidentCreate, IncidentOut, IncidentUpdate
 
 router = APIRouter(prefix="/api/v1")
@@ -122,9 +123,31 @@ async def trigger_analyze(incident_id: UUID, session: AsyncSession = Depends(get
 
     incident.status = IncidentStatus.analyzed
     await session.commit()
+
+    # Persist RCA + Next Best Action drafts (pending remediations)
+    drafts = map_rca_to_drafts(
+        incident_external_id=incident.external_id,
+        incident_namespace=incident.namespace,
+        incident_workload=incident.workload,
+        rca=result if isinstance(result, dict) else {},
+    )
+    nba = await create_pending_remediations(drafts)
+    session.add(
+        RcaResult(
+            incident_id=incident.id,
+            result={**(result if isinstance(result, dict) else {"raw": result}), "nba": nba},
+            confidence=(result.get("confidence") if isinstance(result, dict) else None),
+        )
+    )
+    await session.commit()
+
     return {
         "incident_id": str(incident.id),
         "external_id": incident.external_id,
         "status": incident.status.value,
         "rca": result,
+        "nba": {
+            "drafts_requested": drafts,
+            "remediations": nba,
+        },
     }

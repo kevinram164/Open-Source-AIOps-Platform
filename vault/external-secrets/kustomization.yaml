@@ -8,3 +8,4 @@ resources:
   - app-automation-external-secret.yaml
   - github-automation-external-secret.yaml
   - openai-external-secret.yaml
+  - grafana-external-secrets.yaml
