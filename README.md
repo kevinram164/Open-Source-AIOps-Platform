@@ -139,11 +139,11 @@ open-aiops-platform/
 
 | Phase | Nội dung | Trạng thái |
 |-------|----------|------------|
-| 0 | Discovery — thu thập thông tin cluster | **Hiện tại** |
-| 1 | Foundation — namespaces, RBAC, GitOps skeleton | **Hiện tại** |
-| 2 | Event ingestion — Alertmanager, Incident API | Kế tiếp |
-| 3 | RCA Agent — evidence collection, OpenAI | Planned |
-| 4 | Automation — approval workflow, GitOps PR | Planned |
+| 0 | Discovery — thu thập thông tin cluster | Done |
+| 1 | Foundation — namespaces, RBAC, GitOps skeleton | Done |
+| 2 | Event ingestion — Alertmanager, Incident API | Done |
+| 3 | RCA Agent — evidence collection, OpenAI | Done |
+| 4 | Automation — approval, GitOps PR, Ansible runbook | Done |
 | 5 | Dashboard — Grafana | Planned |
 | 6 | Demo & testing | Planned |
 

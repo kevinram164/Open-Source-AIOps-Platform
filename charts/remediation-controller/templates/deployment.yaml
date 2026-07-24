@@ -43,8 +43,35 @@ spec:
               value: {{ .Values.config.logLevel | quote }}
             - name: POLICY_PATH
               value: /policy/policy.yaml
+            - name: GITOPS_TARGETS_PATH
+              value: /gitops/targets.yaml
             - name: PLATFORM_ENVIRONMENT
               value: {{ .Values.config.platformEnvironment | default "dev-ocp" | quote }}
+            - name: ANSIBLE_JOB_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: ANSIBLE_JOB_SERVICE_ACCOUNT
+              value: {{ .Values.serviceAccount.name | quote }}
+            - name: ANSIBLE_JOB_IMAGE
+              value: {{ .Values.ansible.jobImage | quote }}
+            {{- if .Values.database.existingSecret }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: {{ .Values.database.urlKey }}
+            {{- end }}
+            {{- if .Values.github.existingSecret }}
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.github.existingSecret }}
+                  key: {{ .Values.github.tokenKey }}
+            - name: GITHUB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.github.existingSecret }}
+                  key: {{ .Values.github.usernameKey }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: {{ .Values.probes.liveness.path }}
@@ -67,6 +94,9 @@ spec:
             - name: policy
               mountPath: /policy
               readOnly: true
+            - name: gitops
+              mountPath: /gitops
+              readOnly: true
             {{- if .Values.volumes.tmp.enabled }}
             - name: tmp
               mountPath: /tmp
@@ -78,6 +108,12 @@ spec:
             items:
               - key: {{ .Values.config.policyConfigMapKey }}
                 path: policy.yaml
+        - name: gitops
+          configMap:
+            name: {{ .Values.config.gitopsTargetsConfigMap }}
+            items:
+              - key: {{ .Values.config.gitopsTargetsKey }}
+                path: targets.yaml
         {{- if .Values.volumes.tmp.enabled }}
         - name: tmp
           emptyDir:

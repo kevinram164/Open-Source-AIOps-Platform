@@ -1,14 +1,12 @@
-# Remediation Controller — Phase 4 (Policy Mode B)
+# Remediation Controller — Phase 4 (complete)
 
-Observe+RCA+remediation with **human approval** for all namespaces except system/infra deny-list.
+Policy Mode B: approve then execute.
 
-## API
+| Action | Purpose |
+|--------|---------|
+| `restart-deployment` | Live rollout restart |
+| `scale-deployment` | Live scale (ephemeral under Argo) |
+| `gitops-scale` | GitHub PR for durable replicas |
+| `ansible-runbook` | Job-based node diagnostics |
 
-```
-GET  /api/v1/policy
-POST /api/v1/remediations
-POST /api/v1/remediations/{id}/approve
-POST /api/v1/remediations/{id}/execute
-```
-
-Actions: `restart-deployment`, `scale-deployment`.
+State persisted in Postgres (`remediations`, `audit_log`).

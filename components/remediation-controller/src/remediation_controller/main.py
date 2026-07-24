@@ -7,18 +7,20 @@ from fastapi import FastAPI
 
 from remediation_controller import __version__
 from remediation_controller.config import settings
+from remediation_controller.db import init_db
 from remediation_controller.routers import health, remediations
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    await init_db()
     yield
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Remediation Controller",
-        description="AIOps Phase 4 — Policy Mode B remediation with human approval",
+        description="AIOps Phase 4 — Policy Mode B (approve → K8s / GitOps PR / Ansible runbook)",
         version=__version__,
         lifespan=lifespan,
     )
@@ -30,7 +32,7 @@ def create_app() -> FastAPI:
         return {
             "service": "remediation-controller",
             "version": __version__,
-            "status": "phase4",
+            "status": "phase4-complete",
             "policyMode": "B",
             "environment": settings.platform_environment,
         }

@@ -5,3 +5,4 @@ resources:
   - aiops-endpoints.yaml
   - aiops-platform-config.yaml
   - aiops-remediation-policy.yaml
+  - aiops-gitops-targets.yaml

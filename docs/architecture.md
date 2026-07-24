@@ -126,10 +126,10 @@ RCA recommendation
     → Policy engine (Mode B deny-list + action allowlist)
     → Approval API (pending → approved)
     → Execute:
-        Type 1: K8s operational (restart-deployment, scale-deployment)
-        Type 2: GitOps PR (sau) — preferred cho config lâu dài
-        Type 3: Ansible runbook (sau)
-    → Status + result trên remediation record
+        Type 1: K8s operational — restart-deployment; scale-deployment (ephemeral under Argo)
+        Type 2: gitops-scale — GitHub PR on values.yaml (durable)
+        Type 3: ansible-runbook — Job node-diagnostics
+    → Persist remediations + audit_log (Postgres)
 ```
 
 Alert onboarding: CronJob `amc-sync` gắn webhook Incident API cho mọi ns được phép.

@@ -18,11 +18,14 @@ rules:
     resources: ["deployments", "deployments/scale"]
     verbs: ["get", "list", "patch", "update"]
   - apiGroups: [""]
-    resources: ["namespaces", "pods"]
+    resources: ["namespaces", "pods", "pods/log", "nodes", "events"]
     verbs: ["get", "list"]
   - apiGroups: ["monitoring.coreos.com"]
     resources: ["alertmanagerconfigs"]
     verbs: ["get", "list", "create", "update", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "create", "delete", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -39,7 +42,6 @@ roleRef:
   kind: ClusterRole
   name: remediation-controller
 ---
-# AMC sync job uses same SA
 apiVersion: v1
 kind: ServiceAccount
 metadata:

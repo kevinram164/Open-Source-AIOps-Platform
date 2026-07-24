@@ -88,17 +88,21 @@ Alert → Incident API → RCA Agent
 - Policy ConfigMap: `aiops-remediation-policy` (`aiops-automation`)
 - Deny prefixes: `openshift-`, `kube-`
 - Deny namespaces: `default`, `vault`, `argocd`, `harbor`, `postgres`, … (xem ConfigMap)
-- Action allowlist: `restart-deployment`, `scale-deployment`
+- Action allowlist: `restart-deployment`, `scale-deployment`, `gitops-scale`, `ansible-runbook`
 - Approval state machine: `pending → approved → executing → completed/failed`
 - AMC sync CronJob: tạo `AlertmanagerConfig/aiops-webhook` tự động trên ns được phép
-- Audit: kết quả action lưu trên remediation record (DB audit_log — nâng cấp sau)
+- Persist: bảng `remediations` + `audit_log` (Postgres `aiops`)
+- GitOps: Secret `github-credentials` ← Vault `secret/platform/github`
 
 ### Checklist Mode B
 
 - [ ] Apply `bootstrap/rbac/remediation-rbac.yaml` + policy ConfigMap
+- [ ] ESO: `postgresql-credentials` + `github-credentials` in `aiops-automation`
 - [ ] Verify SA không mutate openshift-*: create remediation với `namespace=openshift-monitoring` → 403
 - [ ] Approve bắt buộc trước execute (`requireApproval: true`)
 - [ ] AMC sync chạy trên ns app mới trong ≤15 phút
+- [ ] `gitops-scale` mở được PR (PAT repo scope)
+- [ ] `ansible-runbook` Job `node-diagnostics` hoàn thành
 
 ## 9. Audit
 

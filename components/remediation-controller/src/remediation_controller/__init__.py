@@ -1,3 +1,3 @@
-"""Remediation Controller — Phase 4 (Policy Mode B)."""
+"""0.5.0 — Phase 4 complete: Postgres, gitops-scale, ansible-runbook."""
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"

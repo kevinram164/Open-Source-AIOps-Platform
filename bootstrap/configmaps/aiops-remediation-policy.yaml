@@ -36,4 +36,6 @@ data:
     allowedActions:
       - restart-deployment
       - scale-deployment
+      - gitops-scale
+      - ansible-runbook
     maxScaleReplicas: 10

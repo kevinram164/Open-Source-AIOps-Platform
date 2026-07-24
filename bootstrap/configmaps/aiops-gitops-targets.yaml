@@ -1,0 +1,59 @@
+# GitOps target map for durable scale PRs (action: gitops-scale)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aiops-gitops-targets
+  namespace: aiops-automation
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+data:
+  targets.yaml: |
+    targets:
+      npd-movie/movie-web:
+        owner: kevinram164
+        repo: movie-web
+        path: charts/movie/values.yaml
+        replicaKey: movieWeb.replicaCount
+        baseBranch: main
+      npd-movie/movie-api:
+        owner: kevinram164
+        repo: movie-web
+        path: charts/movie/values.yaml
+        replicaKey: movieApi.replicaCount
+        baseBranch: main
+      npd-movie/media-worker:
+        owner: kevinram164
+        repo: movie-web
+        path: charts/movie/values.yaml
+        replicaKey: mediaWorker.replicaCount
+        baseBranch: main
+      npd-banking/frontend:
+        owner: kevinram164
+        repo: banking-demo
+        path: phase2-helm-chart/banking-demo/charts/frontend/values.yaml
+        replicaKey: frontend.replicas
+        baseBranch: main
+      npd-banking/auth-service:
+        owner: kevinram164
+        repo: banking-demo
+        path: phase2-helm-chart/banking-demo/charts/auth-service/values.yaml
+        replicaKey: auth-service.replicas
+        baseBranch: main
+      npd-banking/account-service:
+        owner: kevinram164
+        repo: banking-demo
+        path: phase2-helm-chart/banking-demo/charts/account-service/values.yaml
+        replicaKey: account-service.replicas
+        baseBranch: main
+      npd-banking/transfer-service:
+        owner: kevinram164
+        repo: banking-demo
+        path: phase2-helm-chart/banking-demo/charts/transfer-service/values.yaml
+        replicaKey: transfer-service.replicas
+        baseBranch: main
+      npd-banking/notification-service:
+        owner: kevinram164
+        repo: banking-demo
+        path: phase2-helm-chart/banking-demo/charts/notification-service/values.yaml
+        replicaKey: notification-service.replicas
+        baseBranch: main

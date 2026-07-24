@@ -1,27 +1,22 @@
-"""Remediation API."""
+"""Remediation API (Postgres-backed)."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from remediation_controller import actions
+from remediation_controller import actions, store
+from remediation_controller.db import get_session
+from remediation_controller.models import Remediation, RemediationStatusDB
 from remediation_controller.policy import load_policy
 from remediation_controller.schemas import (
     RemediationCreate,
     RemediationOut,
-    RemediationStatus,
 )
 
 router = APIRouter(prefix="/api/v1")
-
-_STORE: dict[str, RemediationOut] = {}
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
 
 
 @router.get("/policy")
@@ -38,104 +33,136 @@ async def get_policy() -> dict:
 
 
 @router.post("/remediations", response_model=RemediationOut)
-async def create_remediation(body: RemediationCreate) -> RemediationOut:
+async def create_remediation(
+    body: RemediationCreate,
+    session: AsyncSession = Depends(get_session),
+) -> RemediationOut:
     policy = load_policy()
     if not policy.allows_action(body.action):
         raise HTTPException(status_code=400, detail=f"action not allowed: {body.action}")
-    if not policy.allows_namespace(body.namespace):
+    if body.action != "ansible-runbook" and not policy.allows_namespace(body.namespace):
         raise HTTPException(
             status_code=403,
             detail=f"namespace denied by policy Mode {policy.policy_mode}: {body.namespace}",
         )
-    if body.action == "scale-deployment":
+    if body.action in {"scale-deployment", "gitops-scale"}:
         replicas = int(body.parameters.get("replicas", 1))
         if replicas < 0 or replicas > policy.max_scale_replicas:
             raise HTTPException(status_code=400, detail="replicas out of policy range")
+    if body.action == "ansible-runbook":
+        playbook = body.parameters.get("playbook", "node-diagnostics")
+        if playbook not in {"node-diagnostics"}:
+            raise HTTPException(status_code=400, detail=f"unsupported playbook: {playbook}")
 
-    item = RemediationOut(
+    row = Remediation(
         id=uuid4(),
         incident_id=body.incident_id,
         action=body.action,
         namespace=body.namespace,
         target=body.target,
         parameters=body.parameters,
-        status=RemediationStatus.pending,
+        status=RemediationStatusDB.pending,
         reason=body.reason,
         requested_by=body.requested_by,
-        approved_by=None,
-        result=None,
-        error=None,
-        created_at=_now(),
-        updated_at=_now(),
     )
-    _STORE[str(item.id)] = item
-    return item
+    return await store.create_remediation(session, row)
 
 
 @router.get("/remediations", response_model=list[RemediationOut])
-async def list_remediations() -> list[RemediationOut]:
-    return sorted(_STORE.values(), key=lambda x: x.created_at, reverse=True)
+async def list_remediations(session: AsyncSession = Depends(get_session)) -> list[RemediationOut]:
+    return await store.list_remediations(session)
 
 
 @router.get("/remediations/{remediation_id}", response_model=RemediationOut)
-async def get_remediation(remediation_id: str) -> RemediationOut:
-    item = _STORE.get(remediation_id)
-    if not item:
+async def get_remediation(
+    remediation_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> RemediationOut:
+    row = await store.get_remediation(session, remediation_id)
+    if not row:
         raise HTTPException(status_code=404, detail="not found")
-    return item
+    return store.to_out(row)
 
 
 @router.post("/remediations/{remediation_id}/approve", response_model=RemediationOut)
-async def approve(remediation_id: str, approved_by: str = "oncall") -> RemediationOut:
-    item = _STORE.get(remediation_id)
-    if not item:
+async def approve(
+    remediation_id: str,
+    approved_by: str = "oncall",
+    session: AsyncSession = Depends(get_session),
+) -> RemediationOut:
+    row = await store.get_remediation(session, remediation_id)
+    if not row:
         raise HTTPException(status_code=404, detail="not found")
-    if item.status not in {RemediationStatus.pending}:
-        raise HTTPException(status_code=409, detail=f"cannot approve from status={item.status}")
-    item.status = RemediationStatus.approved
-    item.approved_by = approved_by
-    item.updated_at = _now()
-    return item
+    if row.status != RemediationStatusDB.pending:
+        raise HTTPException(status_code=409, detail=f"cannot approve from status={row.status.value}")
+    row.status = RemediationStatusDB.approved
+    row.approved_by = approved_by
+    return await store.save(session, row, actor=approved_by, action_type="remediation.approve")
 
 
 @router.post("/remediations/{remediation_id}/reject", response_model=RemediationOut)
-async def reject(remediation_id: str, approved_by: str = "oncall") -> RemediationOut:
-    item = _STORE.get(remediation_id)
-    if not item:
+async def reject(
+    remediation_id: str,
+    approved_by: str = "oncall",
+    session: AsyncSession = Depends(get_session),
+) -> RemediationOut:
+    row = await store.get_remediation(session, remediation_id)
+    if not row:
         raise HTTPException(status_code=404, detail="not found")
-    item.status = RemediationStatus.rejected
-    item.approved_by = approved_by
-    item.updated_at = _now()
-    return item
+    row.status = RemediationStatusDB.rejected
+    row.approved_by = approved_by
+    return await store.save(session, row, actor=approved_by, action_type="remediation.reject")
 
 
 @router.post("/remediations/{remediation_id}/execute", response_model=RemediationOut)
-async def execute(remediation_id: str) -> RemediationOut:
+async def execute(
+    remediation_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> RemediationOut:
     policy = load_policy()
-    item = _STORE.get(remediation_id)
-    if not item:
+    row = await store.get_remediation(session, remediation_id)
+    if not row:
         raise HTTPException(status_code=404, detail="not found")
-    if policy.require_approval and item.status != RemediationStatus.approved:
+    if policy.require_approval and row.status != RemediationStatusDB.approved:
         raise HTTPException(status_code=409, detail="approval required before execute")
-    if not policy.allows_namespace(item.namespace):
+    if row.action != "ansible-runbook" and not policy.allows_namespace(row.namespace):
         raise HTTPException(status_code=403, detail="namespace denied by policy")
 
-    item.status = RemediationStatus.executing
-    item.updated_at = _now()
+    row.status = RemediationStatusDB.executing
+    await store.save(session, row, actor="system", action_type="remediation.executing")
+
     try:
-        if item.action == "restart-deployment":
-            result = actions.restart_deployment(item.namespace, item.target)
-        elif item.action == "scale-deployment":
-            replicas = int(item.parameters.get("replicas", 1))
-            result = actions.scale_deployment(item.namespace, item.target, replicas)
+        if row.action == "restart-deployment":
+            result = actions.restart_deployment(row.namespace, row.target)
+        elif row.action == "scale-deployment":
+            replicas = int((row.parameters or {}).get("replicas", 1))
+            result = actions.scale_deployment(row.namespace, row.target, replicas)
+        elif row.action == "gitops-scale":
+            replicas = int((row.parameters or {}).get("replicas", 1))
+            result = actions.gitops_scale(row.namespace, row.target, replicas, row.reason)
+        elif row.action == "ansible-runbook":
+            playbook = (row.parameters or {}).get("playbook", "node-diagnostics")
+            result = actions.ansible_runbook(
+                playbook=playbook,
+                namespace=row.namespace,
+                target=row.target,
+                parameters=row.parameters or {},
+                remediation_id=str(row.id),
+            )
         else:
-            raise HTTPException(status_code=400, detail=f"unsupported action {item.action}")
-        item.result = result
-        item.status = RemediationStatus.completed
+            raise HTTPException(status_code=400, detail=f"unsupported action {row.action}")
+        row.result = result
+        row.status = RemediationStatusDB.completed
+        row.error = None
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
-        item.error = str(exc)
-        item.status = RemediationStatus.failed
-    item.updated_at = _now()
-    return item
+        row.error = str(exc)
+        row.status = RemediationStatusDB.failed
+
+    return await store.save(
+        session,
+        row,
+        actor=row.approved_by or "system",
+        action_type="remediation.execute",
+    )

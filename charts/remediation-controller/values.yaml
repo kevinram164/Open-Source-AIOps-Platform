@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: harbor-platform.apps.ocp01.npd.co/aiops/remediation-controller
-  tag: "0.4.0"
+  tag: "0.5.0"
   pullPolicy: IfNotPresent
 
 imagePullSecrets:
@@ -51,6 +51,21 @@ config:
   logLevel: INFO
   policyConfigMap: aiops-remediation-policy
   policyConfigMapKey: policy.yaml
+  gitopsTargetsConfigMap: aiops-gitops-targets
+  gitopsTargetsKey: targets.yaml
+  platformEnvironment: "dev-ocp"
+
+database:
+  existingSecret: ""
+  urlKey: DATABASE_URL
+
+github:
+  existingSecret: ""
+  tokenKey: pat
+  usernameKey: username
+
+ansible:
+  jobImage: "bitnami/kubectl:1.30"
 
 amcSync:
   enabled: true

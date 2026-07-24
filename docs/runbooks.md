@@ -1,52 +1,66 @@
-# Runbooks — Remediation (Phase 4, Policy Mode B)
+# Runbooks — Remediation (Phase 4 complete, Policy Mode B)
 
-## Approve + restart deployment
+Lab routes use self-signed certs → always `curl -skS`.
 
-```bash
-# 1) Tạo yêu cầu
-curl -sS -X POST https://remediation-controller-aiops-automation.apps.ocp01.npd.co/api/v1/remediations \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "incident_id": "INC-XXXX",
-    "action": "restart-deployment",
-    "namespace": "npd-banking",
-    "target": "frontend",
-    "reason": "RCA recommends restart after ImagePullBackOff resolved",
-    "requested_by": "oncall"
-  }'
+## Actions
 
-# 2) Approve (thay REM_ID)
-curl -sS -X POST "https://remediation-controller-aiops-automation.apps.ocp01.npd.co/api/v1/remediations/REM_ID/approve?approved_by=kevin"
+| Action | Durable? | Notes |
+|--------|----------|-------|
+| `restart-deployment` | Yes (ops) | Rollout restart |
+| `scale-deployment` | **No** (Argo selfHeal) | Emergency only |
+| `gitops-scale` | **Yes** | Opens GitHub PR → merge → Argo sync |
+| `ansible-runbook` | N/A | Job `node-diagnostics` |
 
-# 3) Execute
-curl -sS -X POST "https://remediation-controller-aiops-automation.apps.ocp01.npd.co/api/v1/remediations/REM_ID/execute"
-```
-
-## Scale deployment
+## 1) Restart
 
 ```bash
-curl -sS -X POST https://remediation-controller-aiops-automation.apps.ocp01.npd.co/api/v1/remediations \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "action": "scale-deployment",
-    "namespace": "npd-movie",
-    "target": "REPLACE_WITH_REAL_DEPLOY_NAME",
-    "parameters": {"replicas": 2},
-    "reason": "recover from crashloop pressure"
-  }'
-# rồi approve → execute như trên
-# Lấy tên thật: oc get deploy -n npd-movie
+BASE=https://remediation-controller-aiops-automation.apps.ocp01.npd.co
+curl -skS -X POST "$BASE/api/v1/remediations" -H 'Content-Type: application/json' -d '{
+  "action": "restart-deployment",
+  "namespace": "npd-movie",
+  "target": "movie-web",
+  "reason": "smoke restart"
+}' | jq
+# approve → execute with returned id
+curl -skS -X POST "$BASE/api/v1/remediations/REM_ID/approve?approved_by=kevin" | jq
+curl -skS -X POST "$BASE/api/v1/remediations/REM_ID/execute" | jq
 ```
 
-
-## Policy check
+## 2) Durable scale (GitOps PR)
 
 ```bash
-curl -sS https://remediation-controller-aiops-automation.apps.ocp01.npd.co/api/v1/policy
+curl -skS -X POST "$BASE/api/v1/remediations" -H 'Content-Type: application/json' -d '{
+  "action": "gitops-scale",
+  "namespace": "npd-movie",
+  "target": "movie-web",
+  "parameters": {"replicas": 2},
+  "reason": "durable scale via PR"
+}' | jq
+curl -skS -X POST "$BASE/api/v1/remediations/REM_ID/approve?approved_by=kevin" | jq
+curl -skS -X POST "$BASE/api/v1/remediations/REM_ID/execute" | jq
+# result contains PR URL — merge PR, Argo syncs replicas
 ```
 
-Namespace trong deny-list / `openshift-*` / `kube-*` → HTTP 403.
+Targets map: ConfigMap `aiops-gitops-targets` (`npd-movie/movie-web`, `npd-banking/frontend`, …).
 
-## AMC auto-onboard (Mode B)
+## 3) Ansible runbook (node diagnostics)
 
-CronJob `remediation-controller-amc-sync` mỗi 15 phút tạo `AlertmanagerConfig/aiops-webhook` trên mọi ns không bị deny → alert → Incident API tự động cho project mới.
+```bash
+curl -skS -X POST "$BASE/api/v1/remediations" -H 'Content-Type: application/json' -d '{
+  "action": "ansible-runbook",
+  "namespace": "aiops-automation",
+  "target": "cluster",
+  "parameters": {"playbook": "node-diagnostics"},
+  "reason": "cluster health dump"
+}' | jq
+# approve → execute; result includes Job logs
+```
+
+## Policy / list
+
+```bash
+curl -skS "$BASE/api/v1/policy" | jq
+curl -skS "$BASE/api/v1/remediations" | jq
+```
+
+Remediations + `audit_log` persist in shared Postgres DB `aiops`.

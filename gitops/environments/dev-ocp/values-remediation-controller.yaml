@@ -1,4 +1,4 @@
-# Remediation Controller overrides — OCP lab (Policy Mode B)
+# Remediation Controller overrides — OCP lab (Phase 4 complete)
 replicaCount: 1
 
 image:
@@ -17,6 +17,20 @@ config:
   platformEnvironment: dev-ocp
   policyConfigMap: aiops-remediation-policy
   policyConfigMapKey: policy.yaml
+  gitopsTargetsConfigMap: aiops-gitops-targets
+  gitopsTargetsKey: targets.yaml
+
+database:
+  existingSecret: postgresql-credentials
+  urlKey: DATABASE_URL
+
+github:
+  existingSecret: github-credentials
+  tokenKey: pat
+  usernameKey: username
+
+ansible:
+  jobImage: bitnami/kubectl:1.30
 
 amcSync:
   enabled: true
