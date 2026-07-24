@@ -1,6 +1,5 @@
 # OpenShift platform monitoring — bật AlertmanagerConfig từ user namespaces.
-# Nếu CM đã tồn tại với config khác: merge tay các key trong config.yaml trước khi sync.
-# Docs: enableUserAlertmanagerConfig
+# Field phải nested dưới alertmanagerMain (không đặt top-level).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -13,4 +12,5 @@ metadata:
     argocd.argoproj.io/sync-wave: "-1"
 data:
   config.yaml: |
-    enableUserAlertmanagerConfig: true
+    alertmanagerMain:
+      enableUserAlertmanagerConfig: true
