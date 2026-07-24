@@ -27,6 +27,14 @@ class PipelineConfig implements Serializable {
             snapshotMode     : 'full',
             gitopsValuesFile : 'gitops/values-images-remediation-controller.yaml',
         ],
+        'aiops-console': [
+            dockerfile       : 'Dockerfile',
+            context          : 'components/aiops-console',
+            helmKey          : 'image',
+            watchPath        : 'components/aiops-console',
+            snapshotMode     : 'full',
+            gitopsValuesFile : 'gitops/values-images-aiops-console.yaml',
+        ],
     ]
 
     static Map mergeDefaults(Map user) {

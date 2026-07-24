@@ -1,4 +1,4 @@
-"""RCA output and request schemas."""
+"""RCA output and request schemas — investigator fields."""
 
 from pydantic import BaseModel, Field
 
@@ -16,8 +16,6 @@ class AnalyzeRequest(BaseModel):
 
 
 class SuggestedAction(BaseModel):
-    """Typed Next Best Action for remediation-controller (still requires human approve)."""
-
     action: str = Field(
         description="restart-deployment | gitops-scale | scale-deployment | ansible-runbook"
     )
@@ -27,13 +25,32 @@ class SuggestedAction(BaseModel):
     reason: str | None = None
 
 
+class ImpactScope(BaseModel):
+    namespaces: list[str] = Field(default_factory=list)
+    workloads: list[str] = Field(default_factory=list)
+    pods: list[str] = Field(default_factory=list)
+    nodes: list[str] = Field(default_factory=list)
+    blast_radius: str | None = Field(
+        default=None, description="service | namespace | cluster | unknown"
+    )
+
+
 class RcaOutput(BaseModel):
     incident_id: str
     status: str = "analyzed"
     affected_service: str | None = None
     affected_namespace: str | None = None
+    # Symptom vs root cause (investigator)
+    symptom: str | None = None
+    symptom_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     probable_root_cause: str
-    confidence: float = Field(ge=0.0, le=1.0)
+    root_cause_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    confidence: float = Field(ge=0.0, le=1.0, description="Overall confidence (compat)")
+    error_subtype: str | None = Field(
+        default=None,
+        description="ImagePullBackOff|CrashLoopBackOff|OOMKilled|NodePressure|Unknown",
+    )
+    impact_scope: ImpactScope | None = None
     supporting_evidence: list[str] = Field(default_factory=list)
     business_impact: str | None = None
     recommended_actions: list[str] = Field(default_factory=list)

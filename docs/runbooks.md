@@ -89,4 +89,9 @@ curl -skS -X POST https://incident-api-aiops-core.apps.ocp01.npd.co/api/v1/chat 
 # or: scripts/aiops-ask.sh 'Why is movie-web failing?'
 ```
 
-Docs: [chat.md](chat.md) · Swagger `/docs`
+## 7) AIOps Console (UI demo)
+
+- https://aiops-console-aiops-core.apps.ocp01.npd.co  
+- Tabs: **Ask** (Chat) · Incidents · Remediations (approve → execute)
+
+Build: Jenkins `BUILD_TARGET=aiops-console`

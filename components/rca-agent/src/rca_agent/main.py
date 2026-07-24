@@ -9,7 +9,7 @@ from prometheus_client import make_asgi_app
 from rca_agent import __version__
 from rca_agent.config import settings
 from rca_agent.logging import setup_logging
-from rca_agent.routers import analyze, health, metrics
+from rca_agent.routers import analyze, health, metrics, ops
 
 
 @asynccontextmanager
@@ -28,6 +28,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["health"])
     app.include_router(metrics.router, tags=["metrics"])
     app.include_router(analyze.router, tags=["analyze"])
+    app.include_router(ops.router, tags=["ops"])
     app.mount("/metrics", make_asgi_app())
 
     @app.get("/")

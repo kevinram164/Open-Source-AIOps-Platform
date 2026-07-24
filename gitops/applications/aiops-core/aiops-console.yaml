@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aiops-console
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
+    targetRevision: main
+    path: charts/aiops-console
+    helm:
+      valueFiles:
+        - ../../gitops/environments/dev-ocp/values-aiops-console.yaml
+        - ../../gitops/values-images-aiops-console.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: aiops-core
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

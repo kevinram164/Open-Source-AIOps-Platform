@@ -36,3 +36,5 @@ Thumbs.db
 # Helm
 charts/*/charts/
 charts/*/Chart.lock
+
+node_modules/

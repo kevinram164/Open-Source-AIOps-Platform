@@ -147,7 +147,8 @@ open-aiops-platform/
 | 4.5 | Next Best Action — RCA → pending remediation | Done |
 | 5 | Dashboard — Grafana (ops) | Done |
 | 5.5 | Chat API — NL Q&A cho demo IBM | Done |
-| 6 | React AIOps Console (sau) / demo hardening | Planned |
+| 5.6 | React AIOps Console (Ask / Incidents / Remediations) | Done |
+| 6 | Demo hardening | Planned |
 
 ## Bảo mật
 
