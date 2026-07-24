@@ -1,0 +1,10 @@
+# Shared overrides for OCP lab (banking + movie already running).
+# Reuses: ArgoCD (argocd), Coroot (observability), nfs-csi, thanos-querier.
+
+global:
+  storageClass: nfs-csi
+  clusterDomain: apps.ocp01.npd.co
+
+  labels:
+    environment: dev-ocp
+    app.kubernetes.io/part-of: open-aiops-platform

@@ -1,9 +1,10 @@
-# Homelab child applications managed by aiops-homelab-root.
+# Child applications managed by aiops-dev-ocp-root.
+# Targets existing OCP lab (ArgoCD ns argocd). Does not replace banking/movie stacks.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: aiops-bootstrap
-  namespace: openshift-gitops
+  namespace: argocd
   labels:
     app.kubernetes.io/part-of: open-aiops-platform
 spec:
@@ -25,7 +26,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: aiops-core
-  namespace: openshift-gitops
+  namespace: argocd
   labels:
     app.kubernetes.io/part-of: open-aiops-platform
 spec:
@@ -45,7 +46,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: aiops-observability
-  namespace: openshift-gitops
+  namespace: argocd
   labels:
     app.kubernetes.io/part-of: open-aiops-platform
 spec:
@@ -65,7 +66,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: aiops-automation
-  namespace: openshift-gitops
+  namespace: argocd
   labels:
     app.kubernetes.io/part-of: open-aiops-platform
 spec:
@@ -85,7 +86,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: aiops-demo
-  namespace: openshift-gitops
+  namespace: argocd
   labels:
     app.kubernetes.io/part-of: open-aiops-platform
 spec:

@@ -16,10 +16,10 @@ data:
   # Alertmanager (for reference — webhook is inbound)
   ALERTMANAGER_URL: "https://alertmanager-main.openshift-monitoring.svc:9094"
 
-  # Coroot API — update namespace/route after discovery
-  COROOT_URL: "http://coroot-coroot.coroot.svc:8080"
-  # COROOT_URL: "https://coroot.apps.<cluster-domain>"
-  COROOT_NAMESPACE: "coroot"
+  # Coroot CE — OCP lab (ns observability, release coroot)
+  COROOT_URL: "http://coroot-coroot.observability.svc:8080"
+  # COROOT_URL: "https://coroot-observability.apps.ocp01.npd.co"
+  COROOT_NAMESPACE: "observability"
 
   # Incident API (internal, deployed in Phase 2)
   INCIDENT_API_URL: "http://incident-api.aiops-core.svc:8080"

@@ -1,6 +1,6 @@
 # Open Source AIOps Platform
 
-Nền tảng AIOps mã nguồn mở chạy trên **Red Hat OpenShift**, mô phỏng các năng lực cốt lõi của IBM Cloud Pak for AIOps, tối ưu cho **homelab cá nhân**.
+Nền tảng AIOps mã nguồn mở chạy trên **Red Hat OpenShift**, mô phỏng các năng lực cốt lõi của IBM Cloud Pak for AIOps. Lab này dùng môi trường **dev-ocp** (reuse Coroot/Argo/Prometheus đang chạy với banking + movie).
 
 ## Mục tiêu
 
@@ -99,7 +99,7 @@ oc apply -f bootstrap/secrets/openai-api-key.secret.yaml
 oc apply -f bootstrap/configmaps/aiops-endpoints.yaml
 
 # Triển khai qua Argo CD (sau khi push repo lên remote)
-oc apply -f gitops/app-of-apps/homelab-root.yaml
+oc apply -f gitops/app-of-apps/dev-ocp-root.yaml
 ```
 
 ### 3. Kiểm tra
@@ -109,7 +109,7 @@ oc get ns | grep aiops
 oc get sa,role,rolebinding -n aiops-core
 oc get networkpolicy -n aiops-core
 oc get pvc -n aiops-core
-oc get applications.argoproj.io -n openshift-gitops
+oc get applications.argoproj.io -n argocd | grep aiops
 ```
 
 ## Cấu trúc repository

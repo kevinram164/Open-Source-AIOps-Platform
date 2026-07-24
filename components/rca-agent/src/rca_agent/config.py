@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     rca_request_timeout_seconds: int = 120
 
     # Platform
-    platform_environment: str = "homelab"
-    platform_cluster_name: str = "homelab-openshift"
+    platform_environment: str = "dev-ocp"
+    platform_cluster_name: str = "ocp01"
 
     @property
     def is_ready(self) -> bool:

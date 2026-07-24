@@ -25,5 +25,5 @@ data:
   AUTOMATION_DEFAULT_TIMEOUT_SECONDS: "300"
 
   # Platform metadata
-  PLATFORM_ENVIRONMENT: "homelab"
-  PLATFORM_CLUSTER_NAME: "homelab-openshift"
+  PLATFORM_ENVIRONMENT: "dev-ocp"
+  PLATFORM_CLUSTER_NAME: "ocp01"

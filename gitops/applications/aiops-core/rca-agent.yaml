@@ -4,7 +4,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: rca-agent
-  namespace: openshift-gitops
+  namespace: argocd
   labels:
     app.kubernetes.io/part-of: open-aiops-platform
   annotations:
@@ -17,7 +17,7 @@ spec:
     path: charts/rca-agent
     helm:
       valueFiles:
-        - ../../gitops/environments/homelab/values-rca-agent.yaml
+        - ../../gitops/environments/dev-ocp/values-rca-agent.yaml
       parameters:
         - name: image.tag
           value: "0.1.0-skeleton"

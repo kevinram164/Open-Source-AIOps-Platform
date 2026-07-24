@@ -1,5 +1,5 @@
 # PostgreSQL persistent volume claim.
-# StorageClass must be configured for your homelab NFS.
+# StorageClass must match the OCP lab NFS provisioner (nfs-csi).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -16,4 +16,4 @@ spec:
     requests:
       storage: 20Gi
   # IMPORTANT: Replace with your StorageClass name from `oc get storageclass`
-  storageClassName: nfs-client
+  storageClassName: nfs-csi

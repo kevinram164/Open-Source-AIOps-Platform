@@ -1,4 +1,4 @@
-# RCA Agent homelab overrides — referenced by Argo CD Application.
+# RCA Agent overrides for OCP lab — referenced by Argo CD Application.
 
 replicaCount: 1
 

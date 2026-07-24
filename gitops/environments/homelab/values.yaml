@@ -1,9 +1,0 @@
-# Homelab environment values — shared overrides.
-
-global:
-  storageClass: nfs-client
-  clusterDomain: apps.homelab.local  # Update after discovery
-
-  labels:
-    environment: homelab
-    app.kubernetes.io/part-of: open-aiops-platform
