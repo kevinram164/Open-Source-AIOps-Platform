@@ -46,6 +46,11 @@ config:
   correlationMaxAlertsPerIncident: 50
   nbaEnabled: true
 
+openai:
+  existingSecret: ""
+  secretKey: OPENAI_API_KEY
+  model: gpt-4o-mini
+
 database:
   existingSecret: postgresql-credentials
   urlKey: DATABASE_URL

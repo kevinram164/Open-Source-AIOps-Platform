@@ -18,6 +18,8 @@ class Settings(BaseSettings):
         "http://remediation-controller.aiops-automation.svc:8080"
     )
     nba_enabled: bool = True
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
     api_token: str = ""
     correlation_time_window_seconds: int = 300
     correlation_max_alerts_per_incident: int = 50

@@ -78,3 +78,15 @@ curl -skS -X POST "$INC/api/v1/incidents/UUID/analyze" | jq '{status, nba}'
 - https://grafana-aiops-observability.apps.ocp01.npd.co  
 - Dashboard **AIOps / AIOps Overview**  
 - Vault: `secret/aiops/grafana` (`admin-user`, `admin-password`)
+
+## 6) Chat API (demo)
+
+```bash
+curl -skS -X POST https://incident-api-aiops-core.apps.ocp01.npd.co/api/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Why is Payment Service down?","namespace":"npd-banking"}' | jq
+
+# or: scripts/aiops-ask.sh 'Why is movie-web failing?'
+```
+
+Docs: [chat.md](chat.md) · Swagger `/docs`

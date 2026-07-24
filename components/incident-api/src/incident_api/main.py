@@ -11,7 +11,7 @@ from incident_api import __version__
 from incident_api.config import settings
 from incident_api.db import init_db
 from incident_api.logging import setup_logging
-from incident_api.routers import alerts, health, incidents
+from incident_api.routers import alerts, chat, health, incidents
 
 log = structlog.get_logger()
 
@@ -31,13 +31,17 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Incident API",
-        description="Incident CRUD and Alertmanager ingestion for Open Source AIOps Platform",
+        description=(
+            "Incident CRUD, Alertmanager ingestion, RCA trigger, NBA, and Chat API "
+            "for Open Source AIOps Platform (CP4AIOps-style lab)."
+        ),
         version=__version__,
         lifespan=lifespan,
     )
     app.include_router(health.router, tags=["health"])
     app.include_router(incidents.router, tags=["incidents"])
     app.include_router(alerts.router, tags=["alerts"])
+    app.include_router(chat.router, tags=["chat"])
     app.mount("/metrics", make_asgi_app())
 
     @app.get("/")
@@ -45,8 +49,9 @@ def create_app() -> FastAPI:
         return {
             "service": "incident-api",
             "version": __version__,
-            "status": "phase2",
+            "status": "chat-api",
             "environment": settings.platform_environment,
+            "docs": "/docs",
         }
 
     return app

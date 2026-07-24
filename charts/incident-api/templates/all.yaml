@@ -65,6 +65,15 @@ spec:
                   optional: true
             - name: NBA_ENABLED
               value: {{ .Values.config.nbaEnabled | default true | quote }}
+            {{- if .Values.openai.existingSecret }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.openai.existingSecret }}
+                  key: {{ .Values.openai.secretKey }}
+            - name: OPENAI_MODEL
+              value: {{ .Values.openai.model | default "gpt-4o-mini" | quote }}
+            {{- end }}
           {{- if .Values.imagePullSecrets }}
           {{- end }}
           livenessProbe:

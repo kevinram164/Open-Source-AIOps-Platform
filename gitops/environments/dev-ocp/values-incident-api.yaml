@@ -18,3 +18,8 @@ route:
 database:
   existingSecret: postgresql-credentials
   urlKey: DATABASE_URL
+
+openai:
+  existingSecret: openai-api-key
+  secretKey: OPENAI_API_KEY
+  model: gpt-4o-mini

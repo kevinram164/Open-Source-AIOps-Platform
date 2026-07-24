@@ -145,8 +145,9 @@ open-aiops-platform/
 | 3 | RCA Agent — evidence collection, OpenAI | Done |
 | 4 | Automation — approval, GitOps PR, Ansible runbook | Done |
 | 4.5 | Next Best Action — RCA → pending remediation | Done |
-| 5 | Dashboard — Grafana | Done |
-| 6 | Demo & testing | Planned |
+| 5 | Dashboard — Grafana (ops) | Done |
+| 5.5 | Chat API — NL Q&A cho demo IBM | Done |
+| 6 | React AIOps Console (sau) / demo hardening | Planned |
 
 ## Bảo mật
 
