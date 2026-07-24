@@ -3,5 +3,4 @@ kind: Kustomization
 namespace: openshift-monitoring
 resources:
   - cluster-monitoring-config.yaml
-  - ../base/alertmanagerconfig.yaml
-# KHÔNG dùng nameSuffix — ConfigMap phải đúng tên cluster-monitoring-config
+  - alertmanagerconfig.yaml
