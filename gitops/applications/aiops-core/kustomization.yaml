@@ -1,7 +1,9 @@
-# Kustomization placeholder for aiops-core applications.
-# Phase 2+: incident-api, postgresql, rca-agent, keep
+# aiops-core Argo Applications — reuse shared postgres-ha (ns postgres), no local Postgres chart.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - rca-agent.yaml
+  - vault-secrets.yaml
+  - db-init.yaml
+  - incident-api.yaml
+  # rca-agent.yaml — Phase 3 only

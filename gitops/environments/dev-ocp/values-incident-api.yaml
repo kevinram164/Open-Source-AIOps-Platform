@@ -1,0 +1,20 @@
+# Incident API — OCP lab (shared postgres-ha, Harbor aiops project)
+replicaCount: 1
+
+image:
+  repository: harbor-platform.apps.ocp01.npd.co/aiops/incident-api
+  # tag: bumped via gitops/values-images.yaml (Jenkins Kaniko)
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: harbor-pull-secret
+
+fullnameOverride: "incident-api"
+
+route:
+  enabled: true
+  host: incident-api-aiops-core.apps.ocp01.npd.co
+
+database:
+  existingSecret: postgresql-credentials
+  urlKey: DATABASE_URL

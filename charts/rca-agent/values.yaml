@@ -2,7 +2,7 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/kiettt4/open-aiops-rca-agent
+  repository: harbor-platform.apps.ocp01.npd.co/aiops/rca-agent
   tag: "0.1.0-skeleton"
   pullPolicy: IfNotPresent
 

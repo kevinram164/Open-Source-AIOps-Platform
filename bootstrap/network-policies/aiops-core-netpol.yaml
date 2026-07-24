@@ -38,6 +38,11 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: aiops-automation
+    # Allow from OpenShift router (Route → incident-api)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-ingress
     # Allow from openshift-monitoring (Alertmanager webhooks)
     - from:
         - namespaceSelector:
@@ -89,17 +94,25 @@ spec:
           port: 9092
         - protocol: TCP
           port: 443
-    # Coroot namespace
+    # Coroot (lab ns: observability)
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: coroot
+              kubernetes.io/metadata.name: observability
       ports:
         - protocol: TCP
           port: 443
         - protocol: TCP
           port: 8080
-    # OpenAI API (external HTTPS)
+    # Shared postgres-ha
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Harbor + OpenAI (external HTTPS)
     - ports:
         - protocol: TCP
           port: 443

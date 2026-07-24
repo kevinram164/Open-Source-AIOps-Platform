@@ -1,0 +1,22 @@
+# Create role/DB aiops on shared postgres-ha (banking + movie untouched).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aiops-db-init
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
+    targetRevision: main
+    path: deploy/db-init
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: postgres
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false

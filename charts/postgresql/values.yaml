@@ -1,0 +1,25 @@
+image:
+  repository: docker.io/library/postgres
+  tag: "16-alpine"
+  pullPolicy: IfNotPresent
+
+nameOverride: "postgresql"
+
+# Official postgres image UID on alpine
+securityContext:
+  runAsUser: 70
+  fsGroup: 70
+
+auth:
+  existingSecret: postgresql-credentials
+
+persistence:
+  existingClaim: postgresql-data
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 1Gi
+  limits:
+    cpu: "1"
+    memory: 3Gi

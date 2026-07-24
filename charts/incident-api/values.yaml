@@ -1,0 +1,50 @@
+replicaCount: 1
+
+image:
+  repository: harbor-platform.apps.ocp01.npd.co/aiops/incident-api
+  tag: "0.2.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: harbor-pull-secret
+
+nameOverride: ""
+fullnameOverride: "incident-api"
+
+podSecurityContext:
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 8080
+
+route:
+  enabled: false
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+config:
+  logLevel: INFO
+  correlationTimeWindowSeconds: 300
+  correlationMaxAlertsPerIncident: 50
+
+database:
+  existingSecret: postgresql-credentials
+  urlKey: DATABASE_URL

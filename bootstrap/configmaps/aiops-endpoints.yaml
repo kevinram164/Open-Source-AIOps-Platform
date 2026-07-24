@@ -21,13 +21,13 @@ data:
   # COROOT_URL: "https://coroot-observability.apps.ocp01.npd.co"
   COROOT_NAMESPACE: "observability"
 
-  # Incident API (internal, deployed in Phase 2)
+  # Incident API (internal)
   INCIDENT_API_URL: "http://incident-api.aiops-core.svc:8080"
 
   # RCA Agent (internal, deployed in Phase 3)
   RCA_AGENT_URL: "http://rca-agent.aiops-core.svc:8080"
 
-  # PostgreSQL (internal, deployed in Phase 2)
-  POSTGRESQL_HOST: "postgresql.aiops-core.svc"
+  # Shared postgres-ha (banking + movie) — DB name aiops
+  POSTGRESQL_HOST: "postgres-ha-postgresql-primary.postgres.svc.cluster.local"
   POSTGRESQL_PORT: "5432"
   POSTGRESQL_DATABASE: "aiops"

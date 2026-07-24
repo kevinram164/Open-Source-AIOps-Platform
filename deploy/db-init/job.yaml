@@ -1,0 +1,53 @@
+# Job: tạo DB/user aiops trên Postgres HA dùng chung (ns postgres).
+# Admin secret: postgres-ha-postgresql (đã có — KHÔNG ghi đè).
+# Password app: Secret aiops-db (Vault/ESO hoặc tạo tay), key password.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: aiops-db-init
+  namespace: postgres
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    app.kubernetes.io/name: aiops
+    app.kubernetes.io/component: db-init
+    app.kubernetes.io/part-of: open-aiops-platform
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: psql
+          image: docker.io/bitnamilegacy/postgresql:16.4.0-debian-12-r9
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-ha-postgresql
+                  key: postgres-password
+            - name: AIOPS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aiops-db
+                  key: password
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              HOST=postgres-ha-postgresql-primary.postgres.svc.cluster.local
+              PASS_SQL=${AIOPS_PASSWORD//\'/\'\'}
+              psql -h "$HOST" -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
+                "DO \$\$ BEGIN
+                   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'aiops') THEN
+                     CREATE ROLE aiops LOGIN PASSWORD '${PASS_SQL}';
+                   ELSE
+                     ALTER ROLE aiops WITH LOGIN PASSWORD '${PASS_SQL}';
+                   END IF;
+                 END \$\$;"
+              psql -h "$HOST" -U postgres -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='aiops'" | grep -q 1 \
+                || psql -h "$HOST" -U postgres -d postgres -c "CREATE DATABASE aiops OWNER aiops;"
+              psql -h "$HOST" -U postgres -d aiops -c "GRANT ALL ON SCHEMA public TO aiops;"
+              echo "aiops database ready (shared postgres-ha; banking/movie untouched)"

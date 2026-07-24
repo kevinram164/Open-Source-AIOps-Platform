@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: incident-api
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
+    targetRevision: main
+    path: charts/incident-api
+    helm:
+      valueFiles:
+        - ../../gitops/environments/dev-ocp/values-incident-api.yaml
+        - ../../gitops/values-images.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: aiops-core
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
