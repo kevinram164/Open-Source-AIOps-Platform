@@ -8,7 +8,10 @@
   "panels": [
     {
       "datasource": { "type": "postgres", "uid": "aiops-pg" },
-      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } },
+        "overrides": []
+      },
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
       "id": 1,
       "options": {
@@ -16,15 +19,16 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false },
         "textMode": "auto"
       },
       "targets": [
         {
           "datasource": { "type": "postgres", "uid": "aiops-pg" },
+          "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(*) AS open_incidents FROM incidents WHERE status::text IN ('open','analyzing','analyzed');",
+          "rawSql": "SELECT COUNT(*)::bigint AS value FROM incidents WHERE CAST(status AS VARCHAR) IN ('open','analyzing','analyzed');",
           "refId": "A"
         }
       ],
@@ -33,19 +37,24 @@
     },
     {
       "datasource": { "type": "postgres", "uid": "aiops-pg" },
-      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] } },
+        "overrides": []
+      },
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
       "id": 2,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }
       },
       "targets": [
         {
+          "datasource": { "type": "postgres", "uid": "aiops-pg" },
+          "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(*) AS pending FROM remediations WHERE status::text = 'pending';",
+          "rawSql": "SELECT COUNT(*)::bigint AS value FROM remediations WHERE CAST(status AS VARCHAR) = 'pending';",
           "refId": "A"
         }
       ],
@@ -54,19 +63,24 @@
     },
     {
       "datasource": { "type": "postgres", "uid": "aiops-pg" },
-      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } },
+        "overrides": []
+      },
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
       "id": 3,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }
       },
       "targets": [
         {
+          "datasource": { "type": "postgres", "uid": "aiops-pg" },
+          "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(*) AS completed FROM remediations WHERE status::text = 'completed';",
+          "rawSql": "SELECT COUNT(*)::bigint AS value FROM remediations WHERE CAST(status AS VARCHAR) = 'completed';",
           "refId": "A"
         }
       ],
@@ -75,19 +89,24 @@
     },
     {
       "datasource": { "type": "postgres", "uid": "aiops-pg" },
-      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] } },
+        "overrides": []
+      },
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
       "id": 4,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }
       },
       "targets": [
         {
+          "datasource": { "type": "postgres", "uid": "aiops-pg" },
+          "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(*) AS rca FROM rca_results;",
+          "rawSql": "SELECT COUNT(*)::bigint AS value FROM rca_results;",
           "refId": "A"
         }
       ],
@@ -96,15 +115,17 @@
     },
     {
       "datasource": { "type": "postgres", "uid": "aiops-pg" },
-      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [] },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } }, "overrides": [] },
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 4 },
       "id": 5,
-      "options": { "showHeader": true, "cellHeight": "sm" },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false } },
       "targets": [
         {
+          "datasource": { "type": "postgres", "uid": "aiops-pg" },
+          "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT external_id, title, status::text AS status, severity::text AS severity, namespace, workload, created_at FROM incidents ORDER BY created_at DESC LIMIT 50;",
+          "rawSql": "SELECT external_id, title, CAST(status AS VARCHAR) AS status, CAST(severity AS VARCHAR) AS severity, namespace, workload, created_at FROM incidents ORDER BY created_at DESC LIMIT 50;",
           "refId": "A"
         }
       ],
@@ -116,12 +137,14 @@
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
       "id": 6,
-      "options": { "showHeader": true },
+      "options": { "showHeader": true, "cellHeight": "sm" },
       "targets": [
         {
+          "datasource": { "type": "postgres", "uid": "aiops-pg" },
+          "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT id::text, incident_id, action, namespace, target, status::text AS status, requested_by, approved_by, left(coalesce(result,''), 120) AS result, created_at FROM remediations ORDER BY created_at DESC LIMIT 50;",
+          "rawSql": "SELECT id::text AS id, incident_id, action, namespace, target, CAST(status AS VARCHAR) AS status, requested_by, approved_by, left(coalesce(result,''), 120) AS result, created_at FROM remediations ORDER BY created_at DESC LIMIT 50;",
           "refId": "A"
         }
       ],
@@ -133,12 +156,14 @@
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
       "id": 7,
-      "options": { "showHeader": true },
+      "options": { "showHeader": true, "cellHeight": "sm" },
       "targets": [
         {
+          "datasource": { "type": "postgres", "uid": "aiops-pg" },
+          "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT r.incident_id::text, r.confidence, left(r.result->>'probable_root_cause', 160) AS root_cause, left((r.result->'nba')::text, 120) AS nba, r.created_at FROM rca_results r ORDER BY r.created_at DESC LIMIT 30;",
+          "rawSql": "SELECT incident_id::text AS incident_id, confidence, left(coalesce(result->>'probable_root_cause',''), 160) AS root_cause, left(coalesce((result->'nba')::text,''), 160) AS nba, created_at FROM rca_results ORDER BY created_at DESC LIMIT 30;",
           "refId": "A"
         }
       ],
@@ -149,9 +174,9 @@
   "schemaVersion": 39,
   "tags": ["aiops"],
   "templating": { "list": [] },
-  "time": { "from": "now-24h", "to": "now" },
+  "time": { "from": "now-7d", "to": "now" },
   "timezone": "browser",
   "title": "AIOps Overview",
   "uid": "aiops-overview",
-  "version": 1
+  "version": 2
 }

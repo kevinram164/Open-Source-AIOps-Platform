@@ -11,6 +11,7 @@ spec:
   policyTypes:
     - Ingress
 ---
+# Grafana needs DNS (openshift-dns :5353 after DNAT) + Postgres + Thanos.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -24,7 +25,6 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # OpenShift router (label chuẩn)
     - from:
         - namespaceSelector:
             matchLabels:
@@ -36,30 +36,48 @@ spec:
     - from:
         - podSelector: {}
   egress:
+    # In-namespace
     - to:
         - podSelector: {}
-    - ports:
+    # OpenShift DNS (ClusterIP :53 → pod :5353) — thiếu rule này → lookup "Try again"
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-dns
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
           port: 53
-    # Prometheus / PostgreSQL / AIOps APIs
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: openshift-monitoring
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: aiops-core
+        - protocol: UDP
+          port: 5353
+        - protocol: TCP
+          port: 5353
+    # Shared postgres-ha
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: postgres
-    - ports:
-        - protocol: TCP
-          port: 443
+      ports:
         - protocol: TCP
           port: 5432
+    # Thanos / Prometheus
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-monitoring
+      ports:
+        - protocol: TCP
+          port: 9091
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 443
+    # Optional: Incident API
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: aiops-core
+      ports:
         - protocol: TCP
           port: 8080

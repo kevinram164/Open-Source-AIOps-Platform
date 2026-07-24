@@ -20,15 +20,18 @@ data:
         uid: aiops-pg
         type: postgres
         access: proxy
-        url: $__env{GF_POSTGRES_HOST}:$__env{GF_POSTGRES_PORT}
-        user: $__env{GF_POSTGRES_USER}
+        url: {{ .Values.postgres.host }}:{{ .Values.postgres.port }}
+        user: aiops
         isDefault: true
+        editable: true
         secureJsonData:
           password: $__env{GF_POSTGRES_PASSWORD}
         jsonData:
-          database: $__env{GF_POSTGRES_DATABASE}
+          database: {{ .Values.postgres.database }}
           sslmode: disable
           postgresVersion: 1500
+          maxOpenConns: 5
+          maxIdleConns: 2
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -46,6 +49,7 @@ data:
         type: file
         disableDeletion: false
         updateIntervalSeconds: 30
+        allowUiUpdates: true
         options:
           path: /etc/grafana/dashboards/aiops
 ---
