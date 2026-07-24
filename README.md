@@ -17,7 +17,7 @@ Nền tảng AIOps mã nguồn mở chạy trên **Red Hat OpenShift**, mô ph�
 | 9 | Dashboard tổng hợp | Phase 5 |
 | 10 | Lịch sử incident/RCA/remediation | Phase 3–4 |
 
-**Phase hiện tại: Phase 2 (Incident store + API)** — Phase 1 Foundation đã xong.
+**Phase hiện tại: Phase 3 (RCA Agent)** — Phase 1–2 đã xong.
 
 ## Kiến trúc tổng quan
 

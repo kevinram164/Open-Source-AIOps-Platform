@@ -16,7 +16,7 @@ spec:
     helm:
       valueFiles:
         - ../../gitops/environments/dev-ocp/values-incident-api.yaml
-        - ../../gitops/values-images.yaml
+        - ../../gitops/values-images-incident-api.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: aiops-core

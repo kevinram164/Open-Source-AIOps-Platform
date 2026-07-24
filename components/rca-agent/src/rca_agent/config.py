@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # External endpoints (from aiops-endpoints ConfigMap)
     prometheus_url: str = ""
     coroot_url: str = ""
-    coroot_namespace: str = "coroot"
+    coroot_namespace: str = "observability"
     incident_api_url: str = ""
     postgresql_host: str = ""
     postgresql_port: int = 5432
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # OpenAI (from Secret)
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o"
+    openai_model: str = "gpt-4o-mini"
     openai_max_tokens: int = 4096
     rca_request_timeout_seconds: int = 120
 

@@ -3,10 +3,12 @@ replicaCount: 1
 
 image:
   repository: harbor-platform.apps.ocp01.npd.co/aiops/rca-agent
-  tag: "0.1.0-skeleton"
+  tag: "0.3.0"
   pullPolicy: IfNotPresent
 
-imagePullSecrets: []
+imagePullSecrets:
+  - name: harbor-pull-secret
+
 nameOverride: ""
 fullnameOverride: ""
 

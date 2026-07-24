@@ -24,7 +24,7 @@ data:
   # Incident API (internal)
   INCIDENT_API_URL: "http://incident-api.aiops-core.svc:8080"
 
-  # RCA Agent (internal, deployed in Phase 3)
+  # RCA Agent (Phase 3)
   RCA_AGENT_URL: "http://rca-agent.aiops-core.svc:8080"
 
   # Shared postgres-ha (banking + movie) — DB name aiops

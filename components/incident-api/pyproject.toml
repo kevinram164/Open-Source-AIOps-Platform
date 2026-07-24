@@ -1,6 +1,6 @@
 [project]
 name = "incident-api"
-version = "0.2.0"
+version = "0.3.0"
 description = "Incident API for Open Source AIOps Platform"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -11,6 +11,7 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "prometheus-client>=0.21.0",
     "structlog>=24.4.0",
+    "httpx>=0.28.0",
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30.0",
 ]

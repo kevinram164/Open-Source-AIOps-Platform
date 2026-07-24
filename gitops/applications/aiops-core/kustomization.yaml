@@ -6,4 +6,4 @@ resources:
   - vault-secrets.yaml
   - db-init.yaml
   - incident-api.yaml
-  # rca-agent.yaml — Phase 3 only
+  - rca-agent.yaml

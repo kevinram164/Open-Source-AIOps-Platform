@@ -4,11 +4,13 @@ class GitOpsUpdater implements Serializable {
 
     static void bumpImageTags(def steps, Map cfg, List<String> services) {
         def tag = GitRef.imageTag(steps)
-        def file = cfg.gitopsValuesFile
+        def files = [] as Set
 
         services.each { svc ->
             def meta = PipelineConfig.SERVICES[svc]
             def helmKey = meta.helmKey
+            def file = meta.gitopsValuesFile ?: cfg.gitopsValuesFile
+            files << file
             steps.sh """
                 set -e
                 sed -i '/^${helmKey}:/,/^[^ ]/ s/^  tag: .*/  tag: \"${tag}\"/' ${file} || true
@@ -24,7 +26,7 @@ class GitOpsUpdater implements Serializable {
                 set -e
                 git config user.email "jenkins@aiops.local"
                 git config user.name "Jenkins CI"
-                git add ${file}
+                git add ${files.join(' ')}
                 if git diff --cached --quiet; then
                   echo 'GitOps values unchanged'
                   exit 0
@@ -34,6 +36,6 @@ class GitOpsUpdater implements Serializable {
                 git push "https://x-access-token:\${GIT_TOKEN}@${cfg.gitRepoUrl.replaceFirst('^https://', '')}" HEAD:${cfg.gitBranch}
             """
         }
-        steps.echo "Updated ${file} — ArgoCD will sync."
+        steps.echo "Updated ${files} — ArgoCD will sync."
     }
 }

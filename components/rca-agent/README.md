@@ -1,29 +1,21 @@
-# RCA Agent
+# RCA Agent — Phase 3
 
-Root Cause Analysis microservice for the Open Source AIOps Platform.
+Evidence (K8s events/pods + best-effort Prometheus/Coroot) → OpenAI → structured RCA JSON.
 
-**Phase 1 status**: Skeleton with health endpoints only. Full RCA logic in Phase 3.
+## Build (Jenkins)
 
-## Local development
+`BUILD_TARGET=rca-agent` (or `all`) — pushes `harbor-platform.apps.ocp01.npd.co/aiops/rca-agent:<sha>`.
 
-```bash
-cd components/rca-agent
-pip install -e ".[dev]"
-export OPENAI_API_KEY=sk-...
-python -m rca_agent
+## API
+
+```
+POST /api/v1/analyze
+GET  /api/v1/analysis/{incident_id}
+GET  /health/ready   # requires OPENAI_API_KEY
 ```
 
-## Endpoints
+Trigger via Incident API:
 
-| Path | Description |
-|------|-------------|
-| `GET /` | Service info |
-| `GET /health/live` | Liveness |
-| `GET /health/ready` | Readiness |
-| `GET /metrics` | Prometheus metrics |
-
-## Build image
-
-```bash
-docker build -t rca-agent:0.1.0-skeleton .
+```
+POST /api/v1/incidents/{id}/analyze
 ```

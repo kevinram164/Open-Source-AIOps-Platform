@@ -1,12 +1,12 @@
-# RCA Agent overrides for OCP lab — referenced by Argo CD Application.
-
+# RCA Agent overrides — OCP lab (Harbor + shared OpenAI secret)
 replicaCount: 1
 
 image:
-  # Phase 3: build qua Jenkins → Harbor (không dùng ghcr.io/kiettt4)
   repository: harbor-platform.apps.ocp01.npd.co/aiops/rca-agent
-  tag: "0.1.0-skeleton"
   pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: harbor-pull-secret
 
 serviceAccount:
   create: false
@@ -22,8 +22,6 @@ resources:
 
 config:
   logLevel: INFO
-
-  # Loaded from ConfigMap aiops-endpoints (envFrom)
   useExistingConfigMap: true
   existingConfigMapName: aiops-endpoints
   existingPlatformConfigMap: aiops-platform-config
@@ -33,17 +31,8 @@ openai:
   secretKey: OPENAI_API_KEY
 
 route:
-  enabled: false  # Enable when UI/API needs external access
-
-probes:
-  liveness:
-    path: /health/live
-    initialDelaySeconds: 10
-    periodSeconds: 15
-  readiness:
-    path: /health/ready
-    initialDelaySeconds: 5
-    periodSeconds: 10
+  enabled: true
+  host: rca-agent-aiops-core.apps.ocp01.npd.co
 
 podSecurityContext:
   runAsNonRoot: true
@@ -54,3 +43,8 @@ securityContext:
   capabilities:
     drop:
       - ALL
+
+volumes:
+  tmp:
+    enabled: true
+    sizeLimit: 64Mi

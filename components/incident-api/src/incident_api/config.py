@@ -13,6 +13,7 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://aiops:CHANGE_ME@postgresql.aiops-core.svc:5432/aiops"
     )
 
+    rca_agent_url: str = "http://rca-agent.aiops-core.svc:8080"
     api_token: str = ""
     correlation_time_window_seconds: int = 300
     correlation_max_alerts_per_incident: int = 50

@@ -1,5 +1,4 @@
-# RCA Agent — deployed via Helm chart (skeleton, Phase 3 logic).
-# Sync is manual in Phase 1 to avoid deploying incomplete service.
+# RCA Agent — Phase 3 (Harbor image via Jenkins Kaniko)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -18,16 +17,13 @@ spec:
     helm:
       valueFiles:
         - ../../gitops/environments/dev-ocp/values-rca-agent.yaml
-      parameters:
-        - name: image.tag
-          value: "0.1.0-skeleton"
+        - ../../gitops/values-images-rca-agent.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: aiops-core
   syncPolicy:
-    # Disabled auto-sync until Phase 3 — uncomment when ready
-    # automated:
-    #   prune: true
-    #   selfHeal: true
+    automated:
+      prune: true
+      selfHeal: true
     syncOptions:
       - CreateNamespace=false
