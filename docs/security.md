@@ -81,14 +81,24 @@ Alert → Incident API → RCA Agent
 - Validate output với Pydantic schema
 - `automation_requires_approval: true` mặc định
 
-## 8. Automation safety (Phase 4)
+## 8. Automation safety (Phase 4) — Policy Mode B
 
-- Action allowlist trong ConfigMap
+**Mode B (đã chọn):** observe + RCA + remediation (có approve) cho **mọi namespace** trừ system/infra deny-list.
+
+- Policy ConfigMap: `aiops-remediation-policy` (`aiops-automation`)
+- Deny prefixes: `openshift-`, `kube-`
+- Deny namespaces: `default`, `vault`, `argocd`, `harbor`, `postgres`, … (xem ConfigMap)
+- Action allowlist: `restart-deployment`, `scale-deployment`
 - Approval state machine: `pending → approved → executing → completed/failed`
-- Audit log mọi action
-- Timeout và retry policy
-- Dry-run khi tool hỗ trợ
-- Rollback instructions trong runbook metadata
+- AMC sync CronJob: tạo `AlertmanagerConfig/aiops-webhook` tự động trên ns được phép
+- Audit: kết quả action lưu trên remediation record (DB audit_log — nâng cấp sau)
+
+### Checklist Mode B
+
+- [ ] Apply `bootstrap/rbac/remediation-rbac.yaml` + policy ConfigMap
+- [ ] Verify SA không mutate openshift-*: create remediation với `namespace=openshift-monitoring` → 403
+- [ ] Approve bắt buộc trước execute (`requireApproval: true`)
+- [ ] AMC sync chạy trên ns app mới trong ≤15 phút
 
 ## 9. Audit
 

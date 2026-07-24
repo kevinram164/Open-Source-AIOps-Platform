@@ -77,10 +77,14 @@ spec:
     path: gitops/applications/aiops-automation
   destination:
     server: https://kubernetes.default.svc
-    namespace: aiops-automation
+    namespace: argocd
   syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
     syncOptions:
       - CreateNamespace=false
+      - RespectNamespaceOverrides=true
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application

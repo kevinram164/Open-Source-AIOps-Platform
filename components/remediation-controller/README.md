@@ -1,5 +1,14 @@
-# Remediation Controller — Phase 4
+# Remediation Controller — Phase 4 (Policy Mode B)
 
-Approval workflow và safe action execution.
+Observe+RCA+remediation with **human approval** for all namespaces except system/infra deny-list.
 
-Helm chart: `charts/remediation-controller/` (sẽ tạo trong Phase 4).
+## API
+
+```
+GET  /api/v1/policy
+POST /api/v1/remediations
+POST /api/v1/remediations/{id}/approve
+POST /api/v1/remediations/{id}/execute
+```
+
+Actions: `restart-deployment`, `scale-deployment`.

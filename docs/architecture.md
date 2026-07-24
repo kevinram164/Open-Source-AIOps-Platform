@@ -117,18 +117,22 @@ Incident webhook
     → Store in PostgreSQL + audit log
 ```
 
-### 3.3 Remediation (Phase 4)
+### 3.3 Remediation (Phase 4) — Policy Mode B
+
+**Mode B:** toàn cluster (trừ system/infra) — observe + RCA + remediation **có human approval**.
 
 ```
 RCA recommendation
-    → Policy engine (allowlist check)
-    → Approval API (human approval required)
+    → Policy engine (Mode B deny-list + action allowlist)
+    → Approval API (pending → approved)
     → Execute:
-        Type 1: K8s operational (restart, scale) — via automation SA
-        Type 2: GitOps PR (memory limit, replicas) — preferred
-        Type 3: Ansible runbook (node diagnostics)
-    → Audit log + status update
+        Type 1: K8s operational (restart-deployment, scale-deployment)
+        Type 2: GitOps PR (sau) — preferred cho config lâu dài
+        Type 3: Ansible runbook (sau)
+    → Status + result trên remediation record
 ```
+
+Alert onboarding: CronJob `amc-sync` gắn webhook Incident API cho mọi ns được phép.
 
 ## 4. Thành phần và trách nhiệm
 
@@ -141,7 +145,8 @@ RCA recommendation
 | PostgreSQL | aiops-core | Incident, RCA, audit history | 2 |
 | Redis | aiops-core | Queue/cache (nếu cần) | TBD |
 | Grafana | aiops-observability | Dashboard | 5 |
-| Argo Workflows | aiops-automation | Remediation orchestration | 4 |
+| Argo Workflows | aiops-automation | Remediation orchestration (optional) | 4 |
+| Remediation Controller | aiops-automation | Approve + execute (Mode B) | 4 |
 | Robusta | TBD | K8s event enrichment | 2 (optional) |
 
 ## 5. Tích hợp nguồn dữ liệu

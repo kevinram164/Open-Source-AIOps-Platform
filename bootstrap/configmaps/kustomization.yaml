@@ -4,3 +4,4 @@ kind: Kustomization
 resources:
   - aiops-endpoints.yaml
   - aiops-platform-config.yaml
+  - aiops-remediation-policy.yaml

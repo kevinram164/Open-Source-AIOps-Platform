@@ -1,26 +1,30 @@
-# ESO for AIOps — Vault paths secret/aiops/*
+# Remediation Controller — Phase 4 (Policy Mode B)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: aiops-vault-secrets
+  name: remediation-controller
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: open-aiops-platform
+    aiops.platform/policy-mode: "B"
   annotations:
-    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-wave: "20"
 spec:
   project: default
   source:
     repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
     targetRevision: main
-    path: vault/external-secrets
+    path: charts/remediation-controller
+    helm:
+      valueFiles:
+        - ../../gitops/environments/dev-ocp/values-remediation-controller.yaml
+        - ../../gitops/values-images-remediation-controller.yaml
   destination:
     server: https://kubernetes.default.svc
-    namespace: aiops-core
+    namespace: aiops-automation
   syncPolicy:
     automated:
-      prune: false
+      prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
-      - RespectNamespaceOverrides=true

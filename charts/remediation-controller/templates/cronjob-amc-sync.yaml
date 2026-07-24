@@ -1,0 +1,63 @@
+{{- if .Values.amcSync.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "remediation-controller.fullname" . }}-amc-sync
+  labels:
+    {{- include "remediation-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: amc-sync
+spec:
+  schedule: {{ .Values.amcSync.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.amcSync.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.amcSync.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: amc-sync
+            app.kubernetes.io/part-of: open-aiops-platform
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ .Values.amcSync.serviceAccountName }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: amc-sync
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              env:
+                - name: POLICY_PATH
+                  value: /policy/policy.yaml
+                - name: AMC_WEBHOOK_URL
+                  value: {{ .Values.amcSync.webhookUrl | quote }}
+              command: ["python", "-m", "remediation_controller.amc_sync"]
+              volumeMounts:
+                - name: policy
+                  mountPath: /policy
+                  readOnly: true
+                {{- if .Values.volumes.tmp.enabled }}
+                - name: tmp
+                  mountPath: /tmp
+                {{- end }}
+          volumes:
+            - name: policy
+              configMap:
+                name: {{ .Values.config.policyConfigMap }}
+                items:
+                  - key: {{ .Values.config.policyConfigMapKey }}
+                    path: policy.yaml
+            {{- if .Values.volumes.tmp.enabled }}
+            - name: tmp
+              emptyDir:
+                sizeLimit: {{ .Values.volumes.tmp.sizeLimit }}
+            {{- end }}
+{{- end }}

@@ -16,6 +16,12 @@ http://incident-api.aiops-core.svc.cluster.local:8080/api/v1/alerts
 
 Argo apps: `aiops-alertmanager-*` (qua `aiops-observability`).
 
+## Policy Mode B — auto-onboard
+
+Khi **Mode B** bật, CronJob `remediation-controller-amc-sync` (ns `aiops-automation`) mỗi 15 phút tạo/cập nhật `AlertmanagerConfig/aiops-webhook` trên mọi namespace **không** nằm trong deny-list. Overlay banking/movie vẫn dùng được; sync sẽ đồng bộ cùng webhook URL.
+
+Deny-list: ConfigMap `aiops-remediation-policy` (`openshift-*`, `kube-*`, vault, argocd, harbor, …).
+
 ## 1) Bật User AlertmanagerConfig (OCP) — qua Argo
 
 ConfigMap `cluster-monitoring-config` nằm trong overlay GitOps:

@@ -1,6 +1,6 @@
 @Library('aiops@main') _
 
-// BUILD_TARGET: auto | all | incident-api
+// BUILD_TARGET: auto | all | incident-api | rca-agent | remediation-controller
 // Reuse Jenkins SA jenkins-kaniko + Vault + Harbor (giống banking/movie)
 
 aiopsPipeline([

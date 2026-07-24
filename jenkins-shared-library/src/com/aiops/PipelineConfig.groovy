@@ -19,6 +19,14 @@ class PipelineConfig implements Serializable {
             snapshotMode     : 'full',
             gitopsValuesFile : 'gitops/values-images-rca-agent.yaml',
         ],
+        'remediation-controller': [
+            dockerfile       : 'Dockerfile',
+            context          : 'components/remediation-controller',
+            helmKey          : 'image',
+            watchPath        : 'components/remediation-controller',
+            snapshotMode     : 'full',
+            gitopsValuesFile : 'gitops/values-images-remediation-controller.yaml',
+        ],
     ]
 
     static Map mergeDefaults(Map user) {

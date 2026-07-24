@@ -1,0 +1,12 @@
+apiVersion: v2
+name: remediation-controller
+description: Remediation Controller — Policy Mode B (approve then execute)
+type: application
+version: 0.1.0
+appVersion: "0.4.0"
+keywords:
+  - aiops
+  - remediation
+  - openshift
+maintainers:
+  - name: kevinram164

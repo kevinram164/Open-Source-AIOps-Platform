@@ -1,0 +1,39 @@
+# AIOps Policy Mode B — observe+RCA+remediation (approval) for all non-system namespaces.
+# Remediation DENY list protects platform/infra; everything else is eligible after human approve.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aiops-remediation-policy
+  namespace: aiops-automation
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+    aiops.platform/policy-mode: "B"
+data:
+  policy.yaml: |
+    policyMode: B
+    requireApproval: true
+    # Observe/RCA: effectively all namespaces (RCA ClusterRole is cluster-wide).
+    # Remediation: allowed unless matched by deny* below.
+    denyNamespacePrefixes:
+      - openshift-
+      - kube-
+    denyNamespaces:
+      - default
+      - vault
+      - argocd
+      - external-secrets
+      - platform
+      - harbor
+      - postgres
+      - redis
+      - kong
+      - minio
+      - observability
+      - aiops-core
+      - aiops-automation
+      - aiops-observability
+    # npd-banking, npd-movie, and future app namespaces are ALLOWED (Mode B)
+    allowedActions:
+      - restart-deployment
+      - scale-deployment
+    maxScaleReplicas: 10

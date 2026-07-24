@@ -1,0 +1,84 @@
+replicaCount: 1
+
+image:
+  repository: harbor-platform.apps.ocp01.npd.co/aiops/remediation-controller
+  tag: "0.4.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: harbor-pull-secret
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: false
+  name: remediation-controller
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 8080
+
+route:
+  enabled: false
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+config:
+  logLevel: INFO
+  policyConfigMap: aiops-remediation-policy
+  policyConfigMapKey: policy.yaml
+
+amcSync:
+  enabled: true
+  schedule: "*/15 * * * *"
+  serviceAccountName: aiops-amc-sync
+  webhookUrl: http://incident-api.aiops-core.svc.cluster.local:8080/api/v1/alerts
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+
+probes:
+  liveness:
+    path: /health/live
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    path: /health/ready
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+volumes:
+  tmp:
+    enabled: true
+    sizeLimit: 32Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
