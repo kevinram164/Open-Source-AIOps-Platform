@@ -1,4 +1,4 @@
 # Image tags bumped by Jenkins (per service file via PipelineConfig).
 image:
   repository: harbor-platform.apps.ocp01.npd.co/aiops/incident-api
-  tag: "8a61573"
+  tag: "5ec3bf2"
