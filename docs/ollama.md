@@ -4,18 +4,34 @@ Chat (incident-api) and RCA (rca-agent) use **`LLM_PROVIDER=ollama|openai`**.
 
 ## OpenShift notes
 
-Pods run as **non-root**. Do **not** mount at `/root/.ollama` without `HOME` —
-Ollama then tries `mkdir /.ollama` → CrashLoop (`permission denied`).
+Pods run as **non-root**. Empty `HOME` → Ollama tries `mkdir /.ollama` → CrashLoop.
 
-Lab fix in manifests:
+Correct layout in manifests:
 
 ```yaml
 env:
   - name: HOME
-    value: /ollama
+    value: /var/lib/ollama
+  - name: OLLAMA_MODELS          # directory path, NOT model name
+    value: /var/lib/ollama/models
 volumeMounts:
   - name: models
-    mountPath: /ollama   # data → /ollama/.ollama on PVC
+    mountPath: /var/lib/ollama
+```
+
+If PVC still not writable after sync:
+
+```bash
+oc adm policy add-scc-to-user anyuid -z ollama -n aiops-core
+oc -n aiops-core rollout restart deploy/ollama
+```
+
+Force apply / verify env on running pod:
+
+```bash
+oc -n aiops-core apply -f bootstrap/ollama/ollama.yaml
+oc -n aiops-core set env deploy/ollama --list | grep -E 'HOME|OLLAMA'
+oc -n aiops-core logs -l app.kubernetes.io/name=ollama -c ollama --tail=20
 ```
 
 ## Argo CD (lab)

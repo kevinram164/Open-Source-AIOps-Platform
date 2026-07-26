@@ -1,5 +1,16 @@
-# Ollama in aiops-core — OpenShift-safe (non-root HOME + PVC).
-# Argo Application: aiops-ollama → path bootstrap/ollama
+# Ollama — OpenShift-safe data dir (never write /.ollama)
+# Fix: HOME + OLLAMA_MODELS must be writable paths on the PVC.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ollama
+  namespace: aiops-core
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/part-of: open-aiops-platform
+---
+# Allow non-root write to PVC; if still denied, grant anyuid:
+#   oc adm policy add-scc-to-user anyuid -z ollama -n aiops-core
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -22,6 +33,9 @@ metadata:
   labels:
     app.kubernetes.io/name: ollama
     app.kubernetes.io/part-of: open-aiops-platform
+  annotations:
+    # bump to force rollout after HOME/path fix
+    aiops.platform/ollama-datadir: "v2-home-var-lib"
 spec:
   replicas: 1
   selector:
@@ -33,13 +47,36 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: ollama
+      annotations:
+        aiops.platform/ollama-datadir: "v2-home-var-lib"
     spec:
-      # OpenShift: arbitrary UID cannot write /root or /.ollama
+      serviceAccountName: ollama
       securityContext:
         runAsNonRoot: true
+        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-        fsGroup: 1000
+      initContainers:
+        # Ensure PVC is writable by arbitrary OpenShift UID
+        - name: fix-perms
+          image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              mkdir -p /data/models /data/.ollama
+              chmod -R g+rwX /data || true
+              # best-effort chown (may no-op without privileges)
+              chown -R 1000:1000 /data 2>/dev/null || true
+              ls -la /data
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+          volumeMounts:
+            - name: models
+              mountPath: /data
       containers:
         - name: ollama
           image: docker.io/ollama/ollama:0.6.5
@@ -47,20 +84,20 @@ spec:
             - name: http
               containerPort: 11434
           env:
-            # Critical: Ollama stores data under $HOME/.ollama
+            # MUST be a real directory on the volume — never empty HOME (→ /.ollama)
             - name: HOME
-              value: /ollama
+              value: /var/lib/ollama
+            # Directory path for models (NOT the model name)
+            - name: OLLAMA_MODELS
+              value: /var/lib/ollama/models
             - name: OLLAMA_HOST
               value: "0.0.0.0:11434"
             - name: OLLAMA_KEEP_ALIVE
               value: "30m"
-            - name: OLLAMA_MODELS
-              value: "qwen2.5:3b"
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
-              drop:
-                - ALL
+              drop: ["ALL"]
             runAsNonRoot: true
           resources:
             requests:
@@ -70,14 +107,13 @@ spec:
               cpu: "4"
               memory: 8Gi
           volumeMounts:
-            # HOME=/ollama → models live at /ollama/.ollama on this volume
             - name: models
-              mountPath: /ollama
+              mountPath: /var/lib/ollama
           readinessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 15
+            initialDelaySeconds: 20
             periodSeconds: 15
             failureThreshold: 12
           livenessProbe:
@@ -137,7 +173,7 @@ metadata:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
-  backoffLimit: 6
+  backoffLimit: 8
   ttlSecondsAfterFinished: 604800
   template:
     metadata:
@@ -146,6 +182,7 @@ spec:
         app.kubernetes.io/component: model-pull
     spec:
       restartPolicy: OnFailure
+      serviceAccountName: ollama
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -163,8 +200,7 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
-              drop:
-                - ALL
+              drop: ["ALL"]
             runAsNonRoot: true
           command:
             - /bin/sh
@@ -174,7 +210,7 @@ spec:
               i=0
               until ollama list >/dev/null 2>&1; do
                 i=$((i+1))
-                if [ "$i" -gt 60 ]; then
+                if [ "$i" -gt 90 ]; then
                   echo "timeout waiting for ollama"
                   exit 1
                 fi
