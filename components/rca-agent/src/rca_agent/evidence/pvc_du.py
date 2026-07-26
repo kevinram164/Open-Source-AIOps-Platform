@@ -14,7 +14,6 @@ from typing import Any
 import structlog
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
-from kubernetes.stream import stream
 
 log = structlog.get_logger()
 
@@ -116,108 +115,95 @@ def _du_bytes(
     timeout_s: int = 12,
 ) -> int | None:
     """
-    Measure directory size inside the pod.
+    Measure directory size inside the pod via `kubectl exec`.
 
-    Prefer `kubectl exec` — kubernetes.stream WebSocket on this OCP lab raises
-    AttributeError: 'NoneType' object has no attribute 'decode'.
+    kubernetes.stream WebSocket raises None.decode on this OCP lab. kubectl needs
+    explicit in-cluster server/token/CA and a writable --cache-dir under /tmp
+    (pod rootfs is read-only).
     """
+    import os
     import shutil
     import subprocess
-    import time
 
-    # --- Path A: kubectl (in-cluster SA) ---
     kubectl = shutil.which("kubectl")
-    if kubectl:
-        for inner in (
-            ["du", "-sb", path],
-            ["/bin/sh", "-c", f"du -sb {shlex.quote(path)} 2>/dev/null | cut -f1"],
-        ):
-            cmd = [
-                kubectl,
-                "exec",
-                "-n",
-                namespace,
-                pod,
-                "-c",
-                container,
-                "--request-timeout",
-                f"{timeout_s}s",
-                "--",
-                *inner,
-            ]
-            try:
-                proc = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout_s + 3,
-                    check=False,
-                )
-                text = (proc.stdout or "").strip()
-                if proc.returncode == 0 and text:
-                    first = text.splitlines()[-1].split()[0]
-                    return int(first)
-                log.debug(
-                    "pvc_du_kubectl_failed",
-                    ns=namespace,
-                    pod=pod,
-                    rc=proc.returncode,
-                    err=(proc.stderr or "")[:240],
-                )
-            except Exception as exc:  # noqa: BLE001
-                log.debug("pvc_du_kubectl_exc", error=str(exc))
+    if not kubectl:
+        log.warning("pvc_du_no_kubectl", ns=namespace, pod=pod)
+        return None
 
-    # --- Path B: python stream (best-effort) ---
-    commands: list[list[str]] = [
+    host = os.environ.get("KUBERNETES_SERVICE_HOST")
+    port = os.environ.get("KUBERNETES_SERVICE_PORT", "443")
+    token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+    if not host or not os.path.isfile(token_path) or not os.path.isfile(ca_path):
+        log.warning("pvc_du_no_incluster", ns=namespace, pod=pod, host=bool(host))
+        return None
+
+    try:
+        with open(token_path, encoding="utf-8") as fh:
+            token = fh.read().strip()
+    except OSError as exc:
+        log.warning("pvc_du_token_read", error=str(exc))
+        return None
+
+    cache_dir = "/tmp/kubectl-cache"
+    try:
+        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+    except OSError:
+        cache_dir = "/tmp"
+
+    base = [
+        kubectl,
+        f"--server=https://{host}:{port}",
+        f"--certificate-authority={ca_path}",
+        f"--token={token}",
+        f"--cache-dir={cache_dir}",
+        "--request-timeout",
+        f"{timeout_s}s",
+    ]
+    env = os.environ.copy()
+    env["HOME"] = "/tmp"
+    env["KUBECACHEDIR"] = cache_dir
+
+    last_err = ""
+    for inner in (
         ["du", "-sb", path],
         ["/bin/sh", "-c", f"du -sb {shlex.quote(path)} 2>/dev/null | cut -f1"],
-    ]
-    last_err: str | None = None
-    for cmd in commands:
-        resp = None
+    ):
+        cmd = [
+            *base,
+            "exec",
+            "-n",
+            namespace,
+            pod,
+            "-c",
+            container,
+            "--",
+            *inner,
+        ]
         try:
-            resp = stream(
-                api.connect_get_namespaced_pod_exec,
-                pod,
-                namespace,
-                command=cmd,
-                container=container,
-                stderr=True,
-                stdin=False,
-                stdout=True,
-                tty=False,
-                _preload_content=False,
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s + 5,
+                check=False,
+                env=env,
             )
-            stdout_parts: list[str] = []
-            deadline = time.time() + timeout_s
-            while getattr(resp, "is_open", lambda: False)() and time.time() < deadline:
-                resp.update(timeout=1)
-                if resp.peek_stdout():
-                    chunk = resp.read_stdout()
-                    if chunk:
-                        stdout_parts.append(
-                            chunk if isinstance(chunk, str) else chunk.decode("utf-8", "replace")
-                        )
-                if resp.peek_stderr():
-                    _ = resp.read_stderr()
-            try:
-                resp.close()
-            except Exception:  # noqa: BLE001
-                pass
-            text = "".join(stdout_parts).strip()
-            if not text:
-                last_err = "empty_stdout"
-                continue
-            first = text.splitlines()[-1].split()[0]
-            return int(first)
+            text = (proc.stdout or "").strip()
+            if proc.returncode == 0 and text:
+                first = text.splitlines()[-1].split()[0]
+                return int(first)
+            last_err = (proc.stderr or proc.stdout or f"rc={proc.returncode}")[:300]
+            log.debug(
+                "pvc_du_kubectl_failed",
+                ns=namespace,
+                pod=pod,
+                rc=proc.returncode,
+                err=last_err,
+            )
         except Exception as exc:  # noqa: BLE001
-            last_err = f"{type(exc).__name__}: {exc}"
-            try:
-                if resp is not None:
-                    resp.close()
-            except Exception:  # noqa: BLE001
-                pass
-            continue
+            last_err = str(exc)
+            log.debug("pvc_du_kubectl_exc", error=last_err)
 
     log.warning(
         "pvc_du_exec_failed",
@@ -225,7 +211,7 @@ def _du_bytes(
         pod=pod,
         path=path,
         error=last_err,
-        has_kubectl=bool(kubectl),
+        has_kubectl=True,
     )
     return None
 
