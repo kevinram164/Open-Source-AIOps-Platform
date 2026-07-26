@@ -368,7 +368,11 @@ async def collect_disk_metrics(
     # Per-PVC directory usage (works on NFS where kubelet % is share-wide)
     try:
         du = await asyncio.to_thread(
-            collect_pvc_usage_via_du, namespace=namespace, max_pvcs=min(top_n + 4, 14)
+            collect_pvc_usage_via_du,
+            namespace=namespace,
+            # Cluster-wide: keep small so ops/context stays under deadline
+            max_pvcs=8 if namespace else 6,
+            workers=3,
         )
         out["warnings"].extend(du.get("warnings") or [])
         du_rows = [

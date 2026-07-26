@@ -244,7 +244,7 @@ async def fetch_ops_context(
     """Multi-facet platform context — answers many question types without topic routing."""
     url = f"{settings.rca_agent_url.rstrip('/')}/api/v1/ops/context"
     # Keep headroom under ~120s browser/proxy cutoffs when LLM also runs
-    ops_timeout = 15.0 if (settings.llm_provider or "").lower() == "ollama" else 60.0
+    ops_timeout = 50.0 if (settings.llm_provider or "").lower() == "ollama" else 60.0
     try:
         async with httpx.AsyncClient(timeout=ops_timeout) as client:
             resp = await client.post(

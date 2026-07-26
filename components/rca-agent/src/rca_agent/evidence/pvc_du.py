@@ -112,7 +112,7 @@ def _du_bytes(
     pod: str,
     container: str,
     path: str,
-    timeout_s: int = 12,
+    timeout_s: int = 8,
 ) -> int | None:
     """
     Measure directory size inside the pod via `kubectl exec`.
@@ -319,6 +319,9 @@ def collect_pvc_usage_via_du(
     if not candidates:
         out["warnings"].append("no Bound PVCs to measure")
         return out
+
+    # Cap parallelism — kubectl exec is heavy; avoid blowing ops/context deadline
+    workers = max(1, min(workers, 3, len(candidates)))
 
     results: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=workers) as pool:

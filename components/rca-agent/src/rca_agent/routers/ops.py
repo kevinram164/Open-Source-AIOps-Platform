@@ -24,8 +24,8 @@ from rca_agent.evidence.ops_metrics import (
 
 router = APIRouter(prefix="/api/v1")
 
-# Ops context hard deadline. PVC du can take several seconds — leave headroom.
-_OPS_CONTEXT_DEADLINE_S = 35.0
+# Ops + light PVC du must finish under browser ~120s wall (chat uses ~15s ops client timeout when ollama)
+_OPS_CONTEXT_DEADLINE_S = 45.0
 
 
 class OpsSnapshotRequest(BaseModel):
