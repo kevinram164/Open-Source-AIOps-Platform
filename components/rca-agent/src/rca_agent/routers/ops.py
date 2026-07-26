@@ -187,9 +187,12 @@ async def _build_platform_context_inner(namespace: str | None = None) -> dict[st
             f"NodeFS {n.get('node')} {n.get('mountpoint')}: used={n.get('used_percent')}%"
         )
     for p in pvc_usage[:8]:
+        method = p.get("method") or "prom"
         evidence.append(
             f"PVCUsage {p.get('namespace')}/{p.get('persistentvolumeclaim')}: "
-            f"used={p.get('used_percent')}%"
+            f"used={p.get('used_percent')}% "
+            f"({p.get('used_human') or '?'}/{p.get('capacity_human') or '?'} claim) "
+            f"via={method}"
         )
 
     summary = {
@@ -247,6 +250,7 @@ async def _build_platform_context_inner(namespace: str | None = None) -> dict[st
             "disk": {
                 "node_filesystem": node_fs[:15],
                 "pvc_usage": pvc_usage[:15],
+                "pvc_usage_method": disk.get("pvc_usage_method") or "prometheus",
                 "nodes_disk_pressure": nodes_disk_pressure[:10],
             },
         },

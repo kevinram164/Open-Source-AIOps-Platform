@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any
 
@@ -11,6 +12,7 @@ from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
 from rca_agent.config import settings
+from rca_agent.evidence.pvc_du import collect_pvc_usage_via_du
 
 log = structlog.get_logger()
 
@@ -266,24 +268,26 @@ async def collect_disk_metrics(
         "pvc_usage": [],
         "warnings": [],
     }
-    # Prefer instance/node labels as exposed by node-exporter on OCP
+    # MUST sum by identity labels — bare A/B matches on all shared labels and
+    # often yields the same bogus % for every series (e.g. all PVCs = 16.6%).
     node_q = (
         f"topk({top_n}, "
-        '100 * (1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay|nsfs"}'
-        ' / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay|nsfs"})))'
+        "100 * (1 - ("
+        'sum by (instance, mountpoint) (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay|nsfs"})'
+        " / "
+        'sum by (instance, mountpoint) (node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay|nsfs"})'
+        ")))"
     )
-    if namespace:
-        pvc_q = (
-            f"topk({top_n}, "
-            f'100 * (kubelet_volume_stats_used_bytes{{namespace="{namespace}"}}'
-            f' / kubelet_volume_stats_capacity_bytes{{namespace="{namespace}"}}))'
-        )
-    else:
-        pvc_q = (
-            f"topk({top_n}, "
-            "100 * (kubelet_volume_stats_used_bytes"
-            " / kubelet_volume_stats_capacity_bytes))"
-        )
+    ns_filter = f'namespace="{namespace}"' if namespace else ""
+    pvc_sel = "{" + ns_filter + "}" if ns_filter else ""
+    pvc_q = (
+        f"topk({top_n}, "
+        "100 * ("
+        f"sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{pvc_sel})"
+        " / "
+        f"sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{pvc_sel})"
+        "))"
+    )
 
     node_rows = await query_prometheus(node_q)
     pvc_rows = await query_prometheus(pvc_q)
@@ -302,16 +306,88 @@ async def collect_disk_metrics(
 
     for series in pvc_rows:
         m = series.get("metric") or {}
-        val = float((series.get("value") or [0, 0])[1])
+        try:
+            val = float((series.get("value") or [0, 0])[1])
+        except (TypeError, ValueError):
+            continue
+        if val != val:  # NaN
+            continue
+        pvc_name = m.get("persistentvolumeclaim") or m.get("pvc")
+        if not pvc_name:
+            continue
         out["pvc_usage"].append(
             {
                 "namespace": m.get("namespace"),
-                "persistentvolumeclaim": m.get("persistentvolumeclaim") or m.get("pvc"),
+                "persistentvolumeclaim": pvc_name,
                 "used_percent": round(val, 1),
             }
         )
 
-    if not node_rows and not pvc_rows:
+    # Absolute bytes (detect shared-FS metrics: same % for every PVC)
+    pvc_used_q = (
+        f"topk({top_n * 2}, "
+        f"sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{pvc_sel}))"
+    )
+    pvc_cap_q = (
+        f"sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{pvc_sel})"
+    )
+    used_map: dict[tuple[str, str], float] = {}
+    cap_map: dict[tuple[str, str], float] = {}
+    for series in await query_prometheus(pvc_used_q):
+        m = series.get("metric") or {}
+        key = (str(m.get("namespace") or ""), str(m.get("persistentvolumeclaim") or ""))
+        if key[1]:
+            used_map[key] = float((series.get("value") or [0, 0])[1])
+    for series in await query_prometheus(pvc_cap_q):
+        m = series.get("metric") or {}
+        key = (str(m.get("namespace") or ""), str(m.get("persistentvolumeclaim") or ""))
+        if key[1]:
+            cap_map[key] = float((series.get("value") or [0, 0])[1])
+    for row in out["pvc_usage"]:
+        key = (str(row.get("namespace") or ""), str(row.get("persistentvolumeclaim") or ""))
+        ub, cb = used_map.get(key), cap_map.get(key)
+        if ub is not None:
+            row["used_bytes"] = int(ub)
+            row["used_human"] = _fmt_mem(ub)
+        if cb is not None:
+            row["capacity_bytes"] = int(cb)
+            row["capacity_human"] = _fmt_mem(cb)
+
+    # Deduplicate identical % smell for operators (shared NFS/CSI often looks like this)
+    pcts = [p["used_percent"] for p in out["pvc_usage"]]
+    shared_fs = len(pcts) >= 3 and max(pcts) - min(pcts) < 0.5
+    if shared_fs:
+        caps = {p.get("capacity_bytes") for p in out["pvc_usage"] if p.get("capacity_bytes")}
+        out["warnings"].append(
+            "PVC used% nearly identical for all claims — kubelet stats often reflect "
+            "shared filesystem (NFS/CSI) fill, not per-PVC directory usage. "
+            "Falling back to du vs claim request when possible."
+            + (f" distinct_capacities={len(caps)}." if caps else "")
+        )
+
+    # Per-PVC directory usage (works on NFS where kubelet % is share-wide)
+    try:
+        du = await asyncio.to_thread(
+            collect_pvc_usage_via_du, namespace=namespace, max_pvcs=min(top_n + 4, 14)
+        )
+        out["warnings"].extend(du.get("warnings") or [])
+        du_rows = [
+            r
+            for r in (du.get("pvc_usage") or [])
+            if isinstance(r, dict) and r.get("used_percent") is not None
+        ]
+        if du_rows:
+            out["pvc_usage_prom"] = out["pvc_usage"]  # keep share-wide for compare
+            out["pvc_usage"] = du_rows[:top_n]
+            out["pvc_usage_method"] = "du"
+        elif shared_fs:
+            out["warnings"].append(
+                "du per-PVC unavailable — keep treating kubelet % as share fill only"
+            )
+    except Exception as exc:  # noqa: BLE001
+        out["warnings"].append(f"pvc du: {exc}")
+
+    if not node_rows and not out["pvc_usage"]:
         out["warnings"].append(
             "Prometheus disk queries empty — need cluster-monitoring-view + node-exporter metrics"
         )

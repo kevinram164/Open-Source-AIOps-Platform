@@ -19,6 +19,12 @@ rules:
       - configmaps
     verbs: ["get", "list", "watch"]
 
+  # Per-PVC usage on NFS/shared FS: du via pod exec (kubelet stats are share-wide)
+  - apiGroups: [""]
+    resources:
+      - pods/exec
+    verbs: ["create"]
+
   - apiGroups: [""]
     resources:
       - nodes

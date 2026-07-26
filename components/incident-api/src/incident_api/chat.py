@@ -363,20 +363,41 @@ def _ops_fallback_brief(question: str, payload: dict[str, Any]) -> tuple[str, li
         pvc_hi = [p for p in all_pvc if _pvc_pct(p) >= 80][:10]
         if pvc_hi:
             parts.append(
-                "PVC ≥80%:\n"
+                "PVC ≥80% (du vs claim request"
+                + (f", method={disk.get('pvc_usage_method')}" if disk.get("pvc_usage_method") else "")
+                + "):\n"
                 + "\n".join(
                     f"- {p.get('namespace', '?')}/{_pvc_name(p)}: {_pvc_pct(p)}%"
+                    + (
+                        f" ({p.get('used_human')}/{p.get('capacity_human')})"
+                        if p.get("used_human") and p.get("capacity_human")
+                        else ""
+                    )
                     for p in pvc_hi
                 )
             )
         elif all_pvc:
+            method = disk.get("pvc_usage_method") or (all_pvc[0].get("method") if all_pvc else "")
             parts.append(
-                "Không có PVC ≥80%. Top PVC theo usage:\n"
+                f"Không có PVC ≥80%. Top PVC"
+                + (f" via {method}" if method else "")
+                + " (du / claim size trên NFS):\n"
                 + "\n".join(
                     f"- {p.get('namespace', '?')}/{_pvc_name(p)}: {_pvc_pct(p)}%"
+                    + (
+                        f" ({p.get('used_human')}/{p.get('capacity_human')})"
+                        if p.get("used_human") and p.get("capacity_human")
+                        else ""
+                    )
                     for p in all_pvc[:8]
                 )
             )
+            pcts = [_pvc_pct(p) for p in all_pvc if _pvc_pct(p) >= 0]
+            if method != "du" and len(pcts) >= 3 and max(pcts) - min(pcts) < 0.5:
+                parts.append(
+                    "⚠ used% gần như giống nhau → vẫn đang dùng kubelet share stats. "
+                    "Cần deploy rca-agent mới (du exec) + RBAC pods/exec."
+                )
         else:
             # Fall back to evidence lines already shaped by rca-agent
             ev_pvc = [e for e in evidence if str(e).startswith("PVCUsage ")]
