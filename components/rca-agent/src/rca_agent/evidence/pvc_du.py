@@ -126,34 +126,78 @@ def _build_mount_index(
     return index
 
 
-def _du_bytes(
+def _redact_secrets(text: str) -> str:
+    """Never surface SA JWT / full kubectl argv in logs or API warnings."""
+    if not text:
+        return text
+    out = re.sub(r"--token=\S+", "--token=[redacted]", text)
+    out = re.sub(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+", "[jwt]", out)
+    if "Command '" in out or "Command [" in out:
+        # TimeoutExpired embeds full argv — keep only a short reason
+        if "timed out" in out.lower() or "TimeoutExpired" in out:
+            return "kubectl exec timed out"
+        return "kubectl exec failed"
+    return out[:300]
+
+
+def _parse_du_stdout(text: str, *, unit: str) -> int | None:
+    """Parse `du` first field; unit is 'b' (bytes) or 'k' (KiB)."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    first = text.splitlines()[-1].split()[0]
+    try:
+        n = int(first)
+    except ValueError:
+        return None
+    if unit == "k":
+        return n * 1024
+    return n
+
+
+def _parse_df_used(text: str) -> int | None:
+    """Parse `df -B1` / `df -Pk` Used column for the mount."""
+    lines = [ln for ln in (text or "").splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return None
+    parts = lines[-1].split()
+    if len(parts) < 3:
+        return None
+    try:
+        used = int(parts[2])
+    except ValueError:
+        return None
+    # df -Pk: Capacity column looks like "45%"
+    if len(parts) >= 5 and parts[4].endswith("%"):
+        return used * 1024
+    return used
+
+
+def _kubectl_exec(
     *,
     namespace: str,
     pod: str,
     container: str,
-    path: str,
-    timeout_s: int = 8,
-) -> int | None:
-    """kubectl exec with explicit in-cluster auth + writable cache under /tmp."""
+    inner: list[str],
+    timeout_s: int,
+) -> tuple[int, str, str]:
+    """Returns (returncode, stdout, err_short) — never embeds SA token."""
     kubectl = shutil.which("kubectl")
     if not kubectl:
-        log.warning("pvc_du_no_kubectl", ns=namespace, pod=pod)
-        return None
+        return 1, "", "kubectl not found"
 
     host = os.environ.get("KUBERNETES_SERVICE_HOST")
     port = os.environ.get("KUBERNETES_SERVICE_PORT", "443")
     token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
     ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
     if not host or not os.path.isfile(token_path) or not os.path.isfile(ca_path):
-        log.warning("pvc_du_no_incluster", ns=namespace, pod=pod, host=bool(host))
-        return None
+        return 1, "", "in-cluster auth unavailable"
 
     try:
         with open(token_path, encoding="utf-8") as fh:
             token = fh.read().strip()
     except OSError as exc:
-        log.warning("pvc_du_token_read", error=str(exc))
-        return None
+        return 1, "", f"token read: {exc}"
 
     cache_dir = "/tmp/kubectl-cache"
     try:
@@ -161,7 +205,7 @@ def _du_bytes(
     except OSError:
         cache_dir = "/tmp"
 
-    base = [
+    cmd = [
         kubectl,
         f"--server=https://{host}:{port}",
         f"--certificate-authority={ca_path}",
@@ -169,43 +213,85 @@ def _du_bytes(
         f"--cache-dir={cache_dir}",
         "--request-timeout",
         f"{timeout_s}s",
+        "exec",
+        "-n",
+        namespace,
+        pod,
+        "-c",
+        container,
+        "--",
+        *inner,
     ]
     env = os.environ.copy()
     env["HOME"] = "/tmp"
     env["KUBECACHEDIR"] = cache_dir
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s + 5,
+            check=False,
+            env=env,
+        )
+        err = _redact_secrets((proc.stderr or "")[:300])
+        return proc.returncode, proc.stdout or "", err or f"rc={proc.returncode}"
+    except subprocess.TimeoutExpired:
+        return 1, "", f"kubectl exec timed out after {timeout_s}s"
+    except Exception as exc:  # noqa: BLE001
+        return 1, "", _redact_secrets(str(exc))
+
+
+def _du_bytes(
+    *,
+    namespace: str,
+    pod: str,
+    container: str,
+    path: str,
+    timeout_s: int = 22,
+) -> tuple[int | None, str]:
+    """
+    Return (used_bytes, method). Prefer du -sk; on timeout/fail use df on mount
+    (good for dedicated PVs like MinIO; approximate on shared NFS).
+    """
+    attempts: list[tuple[list[str], str]] = [
+        (["du", "-sk", path], "k"),
+        (["/usr/bin/du", "-sk", path], "k"),
+        (["du", "-sb", path], "b"),
+        (
+            ["/bin/sh", "-c", f"du -sk {shlex.quote(path)} 2>/dev/null | cut -f1"],
+            "k",
+        ),
+    ]
 
     last_err = ""
-    for inner in (
-        ["du", "-sb", path],
-        ["/bin/sh", "-c", f"du -sb {shlex.quote(path)} 2>/dev/null | cut -f1"],
-    ):
-        cmd = [
-            *base,
-            "exec",
-            "-n",
-            namespace,
-            pod,
-            "-c",
-            container,
-            "--",
-            *inner,
-        ]
-        try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout_s + 5,
-                check=False,
-                env=env,
-            )
-            text = (proc.stdout or "").strip()
-            if proc.returncode == 0 and text:
-                first = text.splitlines()[-1].split()[0]
-                return int(first)
-            last_err = (proc.stderr or proc.stdout or f"rc={proc.returncode}")[:300]
-        except Exception as exc:  # noqa: BLE001
-            last_err = str(exc)
+    for inner, unit in attempts:
+        rc, stdout, err = _kubectl_exec(
+            namespace=namespace,
+            pod=pod,
+            container=container,
+            inner=inner,
+            timeout_s=timeout_s,
+        )
+        parsed = _parse_du_stdout(stdout, unit=unit)
+        if rc == 0 and parsed is not None:
+            return parsed, "du"
+        last_err = err
+        if "timed out" in err:
+            break
+
+    for inner in (["df", "-B1", path], ["df", "-Pk", path]):
+        rc, stdout, err = _kubectl_exec(
+            namespace=namespace,
+            pod=pod,
+            container=container,
+            inner=inner,
+            timeout_s=8,
+        )
+        used = _parse_df_used(stdout)
+        if rc == 0 and used is not None:
+            return used, "df"
+        last_err = err or last_err
 
     log.warning(
         "pvc_du_exec_failed",
@@ -215,7 +301,7 @@ def _du_bytes(
         error=last_err,
         has_kubectl=True,
     )
-    return None
+    return None, "du"
 
 
 def _pick_candidates(
@@ -282,12 +368,12 @@ def _measure_one(
     except Exception:  # noqa: BLE001
         req = None
     pod, container, path = mount
-    used = _du_bytes(namespace=ns, pod=pod, container=container, path=path)
+    used, method = _du_bytes(namespace=ns, pod=pod, container=container, path=path)
     if used is None:
         return {
             "namespace": ns,
             "persistentvolumeclaim": name,
-            "method": "du",
+            "method": method,
             "error": "du_failed",
             "pod": pod,
             "mount_path": path,
@@ -299,7 +385,7 @@ def _measure_one(
     return {
         "namespace": ns,
         "persistentvolumeclaim": name,
-        "method": "du",
+        "method": method,
         "used_bytes": used,
         "used_human": _fmt_bytes(used),
         "capacity_bytes": cap,
