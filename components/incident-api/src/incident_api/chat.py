@@ -349,8 +349,8 @@ def _ops_fallback_brief(question: str, payload: dict[str, Any]) -> tuple[str, li
             )
         )
     parts.append(
-        "OpenAI chưa trả lời được câu hỏi cụ thể trong lần này — "
-        "deploy có API key thì assistant sẽ chọn đúng phần facts liên quan."
+        "LLM chưa trả lời kịp (Ollama cold-start / timeout). "
+        "Warm model rồi hỏi lại; hoặc xem Highlights/evidence bên dưới."
     )
     return (
         "\n\n".join(parts),
@@ -374,54 +374,58 @@ async def synthesize_with_openai(
     if not llm_configured():
         return None
 
-    # Shrink context for local models
-    if ops_payload and (settings.llm_provider or "").lower() == "ollama":
+    use_ollama = (settings.llm_provider or "").lower() == "ollama"
+
+    # Shrink context for local CPU models (large prompts → truncate@2048 → hang → 500@3m)
+    if ops_payload and use_ollama:
         facts = ops_payload.get("facts") or {}
+        disk = facts.get("disk") or {}
+        if isinstance(disk, dict):
+            disk = {
+                "nodes_disk_pressure": (disk.get("nodes_disk_pressure") or [])[:5],
+                "node_filesystem": (disk.get("node_filesystem") or [])[:8],
+                "pvc_usage": (disk.get("pvc_usage") or [])[:8],
+            }
         ops_payload = {
-            "summary": ops_payload.get("summary"),
-            "evidence": (ops_payload.get("evidence") or [])[:20],
-            "warnings": ops_payload.get("warnings"),
+            "summary": {
+                "scope": (ops_payload.get("summary") or {}).get("scope"),
+                "metrics_source": (ops_payload.get("summary") or {}).get("metrics_source"),
+                "highlights": ((ops_payload.get("summary") or {}).get("highlights") or [])[:6],
+                "counts": (ops_payload.get("summary") or {}).get("counts"),
+            },
+            "evidence": (ops_payload.get("evidence") or [])[:10],
             "facts": {
-                "metrics_source": facts.get("metrics_source"),
-                "top_cpu_pods": (facts.get("top_cpu_pods") or [])[:8],
-                "top_memory_pods": (facts.get("top_memory_pods") or [])[:5],
-                "node_usage": (facts.get("node_usage") or [])[:8],
-                "crashloop_pods": (facts.get("crashloop_pods") or [])[:8],
-                "imagepull_pods": (facts.get("imagepull_pods") or [])[:5],
-                "recent_warnings": (facts.get("recent_warnings") or [])[:6],
-                "pvc_issues": (facts.get("pvc_issues") or [])[:5],
-                "hpas": [h for h in (facts.get("hpas") or []) if h.get("at_max")][:5],
-                "inventory": {
-                    "deployments": ((facts.get("inventory") or {}).get("deployments") or [])[:10],
-                },
+                "top_cpu_pods": (facts.get("top_cpu_pods") or [])[:5],
+                "top_memory_pods": (facts.get("top_memory_pods") or [])[:3],
+                "node_usage": (facts.get("node_usage") or [])[:5],
+                "crashloop_pods": (facts.get("crashloop_pods") or [])[:5],
+                "imagepull_pods": (facts.get("imagepull_pods") or [])[:3],
+                "pvc_issues": (facts.get("pvc_issues") or [])[:4],
+                "disk": disk,
+                "hpas": [h for h in (facts.get("hpas") or []) if h.get("at_max")][:3],
             },
         }
 
     context: dict[str, Any] = {
         "question": question,
-        "pending_remediations": remediations,
-        "recent_incidents": (recent_incidents or [])[:5],
-        "conversation_history": (conversation_history or [])[-8:],
+        "pending_remediations": (remediations or [])[:3],
+        "recent_incidents": (recent_incidents or [])[:3],
+        "conversation_history": (conversation_history or [])[-4:],
     }
     if ops_payload:
         context["platform_context"] = {
             "summary": ops_payload.get("summary"),
             "facts": ops_payload.get("facts"),
             "evidence": ops_payload.get("evidence"),
-            "warnings": ops_payload.get("warnings"),
+            "warnings": (ops_payload.get("warnings") or [])[:5],
         }
     if rca:
         context["rca"] = {
             "symptom": rca.get("symptom"),
-            "symptom_confidence": rca.get("symptom_confidence"),
             "probable_root_cause": rca.get("probable_root_cause"),
-            "root_cause_confidence": rca.get("root_cause_confidence"),
-            "confidence": rca.get("confidence"),
             "error_subtype": rca.get("error_subtype"),
-            "impact_scope": rca.get("impact_scope"),
-            "supporting_evidence": (rca.get("supporting_evidence") or [])[:12],
-            "recommended_actions": rca.get("recommended_actions"),
-            "suggested_actions": rca.get("suggested_actions"),
+            "supporting_evidence": (rca.get("supporting_evidence") or [])[:6],
+            "recommended_actions": (rca.get("recommended_actions") or [])[:3],
             "affected_service": rca.get("affected_service"),
             "affected_namespace": rca.get("affected_namespace"),
         }
@@ -432,29 +436,41 @@ async def synthesize_with_openai(
             "namespace": incident.namespace,
             "workload": incident.workload,
             "status": incident.status.value,
-            "severity": incident.severity.value if incident.severity else None,
         }
-    system = (
-        "You are a general OpenShift platform operations assistant. "
-        "The operator may ask ANY day-2 question (CPU, memory, nodes, deployments, "
-        "CrashLoop, ImagePull, PVC, HPA, incidents, capacity, what is noteworthy, etc.). "
-        "Use platform_context + recent_incidents + rca + conversation_history. "
-        "If the user refers to prior turns (e.g. 'còn pod nào nữa?'), use conversation_history. "
-        "Answer ONLY the asked question — pick the relevant facts; "
-        "do not dump unrelated sections. "
-        "If the needed fact is missing, say what is missing — do not invent. "
-        "Return ONLY valid JSON: answer, evidence (array of short strings), "
-        "recommendation. Remediations require human approve. "
-        "Keep under 280 words. Match the question language."
-    )
+    if use_ollama:
+        system = (
+            "OpenShift ops assistant. Answer ONLY the question from facts. "
+            "No inventing. Return ONLY JSON: "
+            '{"answer":"...","evidence":["..."],"recommendation":"..."}. '
+            "Max 120 words. Same language as the question."
+        )
+        max_tok = 350
+    else:
+        system = (
+            "You are a general OpenShift platform operations assistant. "
+            "The operator may ask ANY day-2 question (CPU, memory, nodes, deployments, "
+            "CrashLoop, ImagePull, PVC, HPA, incidents, capacity, what is noteworthy, etc.). "
+            "Use platform_context + recent_incidents + rca + conversation_history. "
+            "If the user refers to prior turns (e.g. 'còn pod nào nữa?'), use conversation_history. "
+            "Answer ONLY the asked question — pick the relevant facts; "
+            "do not dump unrelated sections. "
+            "If the needed fact is missing, say what is missing — do not invent. "
+            "Return ONLY valid JSON: answer, evidence (array of short strings), "
+            "recommendation. Remediations require human approve. "
+            "Keep under 280 words. Match the question language."
+        )
+        max_tok = 900
+    user_content = json.dumps(context, default=str, separators=(",", ":"))
+    if use_ollama and len(user_content) > 6000:
+        user_content = user_content[:6000] + "…(truncated)"
     try:
         content, used_model = await chat_completions(
             messages=[
                 {"role": "system", "content": system},
-                {"role": "user", "content": json.dumps(context, default=str)},
+                {"role": "user", "content": user_content},
             ],
             temperature=0.2,
-            max_tokens=900,
+            max_tokens=max_tok,
         )
         content = content.strip()
         if content.startswith("```"):

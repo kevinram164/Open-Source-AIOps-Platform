@@ -71,7 +71,9 @@ spec:
             - name: OLLAMA_BASE_URL
               value: {{ .Values.llm.ollamaBaseUrl | default "http://ollama.aiops-core.svc:11434" | quote }}
             - name: OLLAMA_MODEL
-              value: {{ .Values.llm.ollamaModel | default "llama3.2:3b" | quote }}
+              value: {{ .Values.llm.ollamaModel | default "qwen2.5:3b" | quote }}
+            - name: OLLAMA_TIMEOUT_SECONDS
+              value: {{ .Values.llm.ollamaTimeoutSeconds | default "180" | quote }}
             {{- end }}
             {{- if .Values.openai.existingSecret }}
             - name: OPENAI_API_KEY
@@ -133,6 +135,11 @@ metadata:
   name: {{ include "incident-api.fullname" . }}
   labels:
     {{- include "incident-api.labels" . | nindent 4 }}
+  annotations:
+    haproxy.router.openshift.io/timeout: {{ .Values.route.timeout | default "300s" | quote }}
+    {{- with .Values.route.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   host: {{ .Values.route.host | quote }}
   to:

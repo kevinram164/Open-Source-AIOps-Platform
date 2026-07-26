@@ -27,6 +27,7 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
       setResult(data);
       onRemediationsChanged?.();
     } catch (err) {
+      setResult(null);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);

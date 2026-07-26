@@ -63,7 +63,8 @@ async def chat_completions(
     }
     # Ollama OpenAI compat supports max_tokens; some builds prefer options.num_predict
     if provider == "ollama":
-        payload["max_tokens"] = min(max_tok, 2048)
+        payload["max_tokens"] = min(max_tok, 400)
+        payload["options"] = {"num_ctx": 4096, "num_predict": min(max_tok, 400)}
     else:
         payload["max_tokens"] = max_tok
 

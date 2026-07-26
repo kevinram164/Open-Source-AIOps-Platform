@@ -19,7 +19,7 @@ metadata:
     app.kubernetes.io/name: ollama
     app.kubernetes.io/part-of: open-aiops-platform
   annotations:
-    aiops.platform/ollama-datadir: "v6-mount-dot-ollama"
+    aiops.platform/ollama-datadir: "v8-num-parallel-1"
 spec:
   replicas: 1
   selector:
@@ -32,7 +32,7 @@ spec:
       labels:
         app.kubernetes.io/name: ollama
       annotations:
-        aiops.platform/ollama-datadir: "v6-mount-dot-ollama"
+        aiops.platform/ollama-datadir: "v8-num-parallel-1"
     spec:
       serviceAccountName: ollama
       securityContext:
@@ -55,6 +55,11 @@ spec:
               value: "0.0.0.0:11434"
             - name: OLLAMA_KEEP_ALIVE
               value: "24h"
+            # Default parallel=4 → n_ctx/4=2048 → truncates chat context → hang/500@3m
+            - name: OLLAMA_NUM_PARALLEL
+              value: "1"
+            - name: OLLAMA_CONTEXT_LENGTH
+              value: "4096"
             - name: MODEL
               value: "qwen2.5:3b"
           securityContext:
@@ -96,7 +101,7 @@ spec:
               memory: 4Gi
             limits:
               cpu: "4"
-              memory: 8Gi
+              memory: 12Gi
           volumeMounts:
             # Exact path from the error — kubelet mounts it writable for any UID
             - name: ollama-home

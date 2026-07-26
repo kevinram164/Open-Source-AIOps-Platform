@@ -28,6 +28,8 @@ service:
 route:
   enabled: false
   host: ""
+  timeout: "300s"
+  annotations: {}
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect

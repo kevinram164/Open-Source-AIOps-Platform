@@ -12,6 +12,7 @@ fullnameOverride: aiops-console
 route:
   enabled: true
   host: aiops-console-aiops-core.apps.ocp01.npd.co
+  timeout: "300s"
 
 resources:
   requests:

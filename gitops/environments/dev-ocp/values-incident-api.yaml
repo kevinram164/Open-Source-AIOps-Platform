@@ -14,6 +14,7 @@ fullnameOverride: "incident-api"
 route:
   enabled: true
   host: incident-api-aiops-core.apps.ocp01.npd.co
+  timeout: "300s"
 
 database:
   existingSecret: postgresql-credentials

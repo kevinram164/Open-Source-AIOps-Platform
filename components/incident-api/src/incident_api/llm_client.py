@@ -42,7 +42,8 @@ async def chat_completions(
         headers = {"Content-Type": "application/json"}
         if settings.openai_api_key:
             headers["Authorization"] = f"Bearer {settings.openai_api_key}"
-        max_tokens = min(max_tokens, 2048)
+        # CPU 3B: keep output short or requests hit ~3m and return 500
+        max_tokens = min(max_tokens, 400)
         timeout = float(settings.ollama_timeout_seconds)
     else:
         url = "https://api.openai.com/v1/chat/completions"
@@ -60,6 +61,9 @@ async def chat_completions(
         "max_tokens": max_tokens,
         "messages": messages,
     }
+    if provider == "ollama":
+        # Prefer smaller window on CPU; avoid default parallel slot truncate
+        payload["options"] = {"num_ctx": 4096, "num_predict": max_tokens}
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(url, headers=headers, json=payload)

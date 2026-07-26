@@ -76,6 +76,12 @@ metadata:
   name: {{ include "aiops-console.fullname" . }}
   labels:
     {{- include "aiops-console.labels" . | nindent 4 }}
+  annotations:
+    # Ollama cold-start + ops context often > default 30s → 504 without this
+    haproxy.router.openshift.io/timeout: {{ .Values.route.timeout | default "300s" | quote }}
+    {{- with .Values.route.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   {{- if .Values.route.host }}
   host: {{ .Values.route.host }}
