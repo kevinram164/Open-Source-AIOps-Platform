@@ -13,7 +13,11 @@ log = structlog.get_logger()
 
 
 def llm_configured() -> bool:
+    if not getattr(settings, "chat_llm_enabled", True):
+        return False
     provider = (settings.llm_provider or "openai").lower()
+    if provider in ("none", "off", "disabled", "template"):
+        return False
     if provider == "ollama":
         return bool(settings.ollama_base_url)
     return bool(settings.openai_api_key)

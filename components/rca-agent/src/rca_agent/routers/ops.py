@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter
@@ -23,6 +24,9 @@ from rca_agent.evidence.ops_metrics import (
 
 router = APIRouter(prefix="/api/v1")
 
+# Must finish well under browser/proxy ~120s empty-response wall
+_OPS_CONTEXT_DEADLINE_S = 20.0
+
 
 class OpsSnapshotRequest(BaseModel):
     namespace: str | None = None
@@ -41,61 +45,102 @@ class ResolvePodRequest(BaseModel):
     pod_name: str
 
 
+async def _run(sync_fn, *args, **kwargs):
+    return await asyncio.to_thread(sync_fn, *args, **kwargs)
+
+
 async def build_platform_context(namespace: str | None = None) -> dict[str, Any]:
     """
     Collect a general-purpose ops fact pack so chat can answer *many* questions
     without hardcoding one topic per release.
+
+    Hard deadline (~20s): partial facts + warnings beat ERR_EMPTY_RESPONSE.
     """
+    try:
+        return await asyncio.wait_for(
+            _build_platform_context_inner(namespace),
+            timeout=_OPS_CONTEXT_DEADLINE_S,
+        )
+    except asyncio.TimeoutError:
+        return {
+            "namespace": namespace,
+            "summary": {
+                "scope": namespace or "cluster",
+                "metrics_source": "timeout",
+                "counts": {},
+                "highlights": [
+                    f"ops context timed out after {_OPS_CONTEXT_DEADLINE_S:.0f}s — partial/empty facts"
+                ],
+            },
+            "facts": {},
+            "evidence": [f"ops_context_timeout_{int(_OPS_CONTEXT_DEADLINE_S)}s"],
+            "warnings": [f"build_platform_context exceeded {_OPS_CONTEXT_DEADLINE_S}s"],
+        }
+
+
+async def _build_platform_context_inner(namespace: str | None = None) -> dict[str, Any]:
     warnings: list[str] = []
     evidence: list[str] = []
 
-    # Failures / Ready
-    snap = collect_ops_snapshot(namespace=namespace, focus=None)
+    # Parallel collect (sync K8s clients in threads; Prom already async)
+    snap_t = _run(collect_ops_snapshot, namespace=namespace, focus=None)
+    pod_t = _run(collect_pod_metrics, namespace=namespace)
+    node_t = _run(collect_node_metrics)
+    prom_t = collect_prom_top_pods(namespace=namespace)
+    disk_t = collect_disk_metrics(namespace=namespace)
+    inv_t = _run(collect_workload_inventory, namespace)
+    ev_t = _run(collect_recent_warnings, namespace=namespace)
+    pvc_t = _run(collect_pvc_issues, namespace=namespace)
+    hpa_t = _run(collect_hpa_status, namespace=namespace)
+
+    snap, pod_m, node_m, prom, disk, inv, ev, pvc, hpa = await asyncio.gather(
+        snap_t, pod_t, node_t, prom_t, disk_t, inv_t, ev_t, pvc_t, hpa_t,
+        return_exceptions=True,
+    )
+
+    def _ok(val, label: str):
+        if isinstance(val, Exception):
+            warnings.append(f"{label}: {val}")
+            return {}
+        return val or {}
+
+    snap = _ok(snap, "ops_snapshot")
+    pod_m = _ok(pod_m, "pod_metrics")
+    node_m = _ok(node_m, "node_metrics")
+    prom = _ok(prom, "prom")
+    disk = _ok(disk, "disk")
+    inv = _ok(inv, "inventory")
+    ev = _ok(ev, "events")
+    pvc = _ok(pvc, "pvc")
+    hpa = _ok(hpa, "hpa")
+
     crash = snap.get("crashloop_pods") or []
     imagepull = snap.get("imagepull_pods") or []
     oom = snap.get("oom_pods") or []
     not_ready = snap.get("not_ready_pods") or []
     nodes_ready = snap.get("nodes") or []
     warnings.extend(snap.get("warnings") or [])
-
-    # Metrics
-    pod_m = collect_pod_metrics(namespace=namespace)
-    node_m = collect_node_metrics()
-    prom = await collect_prom_top_pods(namespace=namespace)
     warnings.extend(pod_m.get("warnings") or [])
     warnings.extend(node_m.get("warnings") or [])
     warnings.extend(prom.get("warnings") or [])
+    warnings.extend(disk.get("warnings") or [])
+    warnings.extend(inv.get("warnings") or [])
+    warnings.extend(ev.get("warnings") or [])
+    warnings.extend(pvc.get("warnings") or [])
+    warnings.extend(hpa.get("warnings") or [])
 
     top_cpu = prom.get("top_cpu_pods") or pod_m.get("top_cpu_pods") or []
     top_mem = prom.get("top_memory_pods") or pod_m.get("top_memory_pods") or []
     metrics_source = "prometheus" if prom.get("top_cpu_pods") else "metrics.k8s.io"
     node_usage = node_m.get("nodes") or []
-
-    disk = await collect_disk_metrics(namespace=namespace)
-    warnings.extend(disk.get("warnings") or [])
     node_fs = disk.get("node_filesystem") or []
     pvc_usage = disk.get("pvc_usage") or []
-    nodes_disk_pressure = [
-        n for n in nodes_ready if n.get("disk_pressure") == "True"
-    ]
-
-    # Inventory
-    inv = collect_workload_inventory(namespace)
-    warnings.extend(inv.get("warnings") or [])
-
-    # Phase 6 enrich: events / PVC / HPA
-    ev = collect_recent_warnings(namespace=namespace)
-    pvc = collect_pvc_issues(namespace=namespace)
-    hpa = collect_hpa_status(namespace=namespace)
-    warnings.extend(ev.get("warnings") or [])
-    warnings.extend(pvc.get("warnings") or [])
-    warnings.extend(hpa.get("warnings") or [])
+    nodes_disk_pressure = [n for n in nodes_ready if n.get("disk_pressure") == "True"]
     recent_events = ev.get("events") or []
     pvc_issues = pvc.get("pvcs") or []
     hpas = hpa.get("hpas") or []
     hpas_at_max = [h for h in hpas if h.get("at_max")]
 
-    # Compact evidence lines (LLM + template fallback)
     for p in top_cpu[:8]:
         evidence.append(
             f"CPU {p.get('namespace')}/{p.get('name')}: {p.get('cpu')} ({p.get('cpu_cores')} cores)"
@@ -205,100 +250,74 @@ async def build_platform_context(namespace: str | None = None) -> dict[str, Any]
                 "nodes_disk_pressure": nodes_disk_pressure[:10],
             },
         },
-        "evidence": evidence[:55],
-        "warnings": warnings,
+        "evidence": evidence[:40],
+        "warnings": warnings[:20],
     }
 
 
 def _highlights(
-    top_cpu: list,
-    crash: list,
-    imagepull: list,
-    nodes_ready: list,
-    node_usage: list,
+    top_cpu,
+    crash,
+    imagepull,
+    nodes_ready,
+    node_usage,
     *,
-    recent_events: list | None = None,
-    pvc_issues: list | None = None,
-    hpas_at_max: list | None = None,
-    node_fs: list | None = None,
-    pvc_usage: list | None = None,
-    nodes_disk_pressure: list | None = None,
+    recent_events=None,
+    pvc_issues=None,
+    hpas_at_max=None,
+    node_fs=None,
+    pvc_usage=None,
+    nodes_disk_pressure=None,
 ) -> list[str]:
     notes: list[str] = []
-    if top_cpu:
-        p = top_cpu[0]
-        notes.append(f"Top CPU: {p.get('namespace')}/{p.get('name')} ({p.get('cpu')})")
-    if node_usage:
-        n = node_usage[0]
-        notes.append(f"Top node CPU: {n.get('name')} ({n.get('cpu')})")
     if crash:
         notes.append(f"{len(crash)} CrashLoopBackOff pod(s)")
     if imagepull:
-        notes.append(f"{len(imagepull)} ImagePull pod(s)")
-    for n in nodes_ready:
-        if n.get("ready") != "True":
-            notes.append(f"Node {n.get('name')} Ready={n.get('ready')}")
+        notes.append(f"{len(imagepull)} ImagePull issue(s)")
+    if top_cpu:
+        p = top_cpu[0]
+        notes.append(f"Highest CPU: {p.get('namespace')}/{p.get('name')} ({p.get('cpu')})")
+    not_ready_nodes = [n for n in (nodes_ready or []) if n.get("ready") != "True"]
+    if not_ready_nodes:
+        notes.append(f"{len(not_ready_nodes)} node(s) not Ready")
     if nodes_disk_pressure:
         notes.append(f"{len(nodes_disk_pressure)} node(s) DiskPressure=True")
     hot_fs = [x for x in (node_fs or []) if (x.get("used_percent") or 0) >= 80]
     if hot_fs:
-        n0 = hot_fs[0]
-        notes.append(f"Node FS hot: {n0.get('node')} {n0.get('used_percent')}%")
+        notes.append(f"{len(hot_fs)} node filesystem(s) ≥80%")
     hot_pvc = [x for x in (pvc_usage or []) if (x.get("used_percent") or 0) >= 80]
     if hot_pvc:
-        p0 = hot_pvc[0]
-        notes.append(
-            f"PVC hot: {p0.get('namespace')}/{p0.get('persistentvolumeclaim')} "
-            f"{p0.get('used_percent')}%"
-        )
-    if recent_events:
-        notes.append(f"{len(recent_events)} recent Warning event(s)")
+        notes.append(f"{len(hot_pvc)} PVC(s) ≥80% used")
     if pvc_issues:
         notes.append(f"{len(pvc_issues)} PVC not Bound")
     if hpas_at_max:
         notes.append(f"{len(hpas_at_max)} HPA at max replicas")
-    if not notes:
-        notes.append("No strong anomalies in scanned scope.")
-    return notes
+    if recent_events:
+        notes.append(f"{len(recent_events)} recent Warning event(s)")
+    if not notes and node_usage:
+        notes.append("Cluster metrics collected — no major failure signals in pack")
+    return notes[:10]
+
+
+@router.post("/ops/snapshot")
+async def ops_snapshot(req: OpsSnapshotRequest) -> dict[str, Any]:
+    return collect_ops_snapshot(namespace=req.namespace, focus=req.focus)
 
 
 @router.post("/ops/context")
 async def ops_context(req: OpsContextRequest) -> dict[str, Any]:
-    """Multi-facet platform context for arbitrary ops questions."""
-    ctx = await build_platform_context(req.namespace)
-    ctx["question"] = req.question
-    return ctx
+    data = await build_platform_context(namespace=req.namespace)
+    if req.question:
+        data["question"] = req.question
+    return data
 
 
 @router.post("/ops/query")
 async def ops_query(req: OpsContextRequest) -> dict[str, Any]:
     """Alias of /ops/context — kept for backward compatibility."""
-    ctx = await build_platform_context(req.namespace)
-    ctx["question"] = req.question
-    ctx["topic"] = "platform"  # no longer topic-gated
-    return ctx
+    return await ops_context(req)
 
 
-@router.post("/ops/snapshot")
-async def ops_snapshot(req: OpsSnapshotRequest) -> dict:
-    """Legacy snapshot + metrics enrichment."""
-    ctx = await build_platform_context(req.namespace)
-    snap = collect_ops_snapshot(namespace=req.namespace, focus=req.focus)
-    snap["noteworthy"] = ctx["summary"]["highlights"]
-    snap["top_cpu_pods"] = ctx["facts"]["top_cpu_pods"]
-    snap["top_memory_pods"] = ctx["facts"]["top_memory_pods"]
-    snap["node_usage"] = ctx["facts"]["node_usage"]
-    snap["inventory"] = ctx["facts"]["inventory"]
-    snap["metrics_source"] = ctx["facts"]["metrics_source"]
-    snap["metrics_warnings"] = ctx["warnings"]
-    return snap
-
-
-@router.post("/ops/resolve-deployment")
-async def resolve_deployment(req: ResolvePodRequest) -> dict:
-    dep = resolve_deployment_for_pod(req.namespace, req.pod_name)
-    return {
-        "namespace": req.namespace,
-        "pod_name": req.pod_name,
-        "deployment": dep,
-    }
+@router.post("/ops/resolve-pod")
+async def resolve_pod(req: ResolvePodRequest) -> dict[str, Any]:
+    return resolve_deployment_for_pod(req.namespace, req.pod_name)

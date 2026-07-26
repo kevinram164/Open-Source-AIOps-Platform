@@ -23,9 +23,10 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     ollama_base_url: str = "http://ollama.aiops-core.svc:11434"
     ollama_model: str = "qwen2.5:3b"
-    ollama_timeout_seconds: int = 75
+    ollama_timeout_seconds: int = 45
     # Browser / middle proxy often kills at ~120s (ERR_EMPTY_RESPONSE).
     # ops + LLM must finish before that wall.
+    chat_llm_enabled: bool = True  # CHAT_LLM_ENABLED=false → template only (fast)
     api_token: str = ""
     correlation_time_window_seconds: int = 300
     correlation_max_alerts_per_incident: int = 50

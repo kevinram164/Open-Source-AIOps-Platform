@@ -244,7 +244,7 @@ async def fetch_ops_context(
     """Multi-facet platform context — answers many question types without topic routing."""
     url = f"{settings.rca_agent_url.rstrip('/')}/api/v1/ops/context"
     # Keep headroom under ~120s browser/proxy cutoffs when LLM also runs
-    ops_timeout = 25.0 if (settings.llm_provider or "").lower() == "ollama" else 60.0
+    ops_timeout = 15.0 if (settings.llm_provider or "").lower() == "ollama" else 60.0
     try:
         async with httpx.AsyncClient(timeout=ops_timeout) as client:
             resp = await client.post(
@@ -340,25 +340,53 @@ def _ops_fallback_brief(question: str, payload: dict[str, Any]) -> tuple[str, li
     ]
     # Prefer question-relevant facts first (PVC / disk)
     if any(k in q for k in ("pvc", "disk", "filesystem", "ổ cứng", "dung lượng")):
-        pvc_hi = [
-            p
-            for p in (disk.get("pvc_usage") or [])
-            if isinstance(p, dict) and float(p.get("usage_percent") or p.get("pct") or 0) >= 80
-        ][:8]
-        if not pvc_hi:
-            pvc_hi = (disk.get("pvc_usage") or [])[:8]
-        pressure = disk.get("nodes_disk_pressure") or []
-        node_fs = disk.get("node_filesystem") or []
+        def _pvc_pct(p: dict) -> float:
+            for k in ("used_percent", "usage_percent", "pct"):
+                v = p.get(k)
+                if v is not None:
+                    try:
+                        return float(v)
+                    except (TypeError, ValueError):
+                        pass
+            return -1.0
+
+        def _pvc_name(p: dict) -> str:
+            return str(
+                p.get("persistentvolumeclaim")
+                or p.get("name")
+                or p.get("pvc")
+                or "?"
+            )
+
+        all_pvc = [p for p in (disk.get("pvc_usage") or []) if isinstance(p, dict)]
+        all_pvc.sort(key=_pvc_pct, reverse=True)
+        pvc_hi = [p for p in all_pvc if _pvc_pct(p) >= 80][:10]
         if pvc_hi:
             parts.append(
-                "PVC usage:\n"
+                "PVC ≥80%:\n"
                 + "\n".join(
-                    f"- {p.get('namespace', '?')}/{p.get('name') or p.get('pvc')}: "
-                    f"{p.get('usage_percent') or p.get('pct') or '?'}%"
+                    f"- {p.get('namespace', '?')}/{_pvc_name(p)}: {_pvc_pct(p)}%"
                     for p in pvc_hi
-                    if isinstance(p, dict)
                 )
             )
+        elif all_pvc:
+            parts.append(
+                "Không có PVC ≥80%. Top PVC theo usage:\n"
+                + "\n".join(
+                    f"- {p.get('namespace', '?')}/{_pvc_name(p)}: {_pvc_pct(p)}%"
+                    for p in all_pvc[:8]
+                )
+            )
+        else:
+            # Fall back to evidence lines already shaped by rca-agent
+            ev_pvc = [e for e in evidence if str(e).startswith("PVCUsage ")]
+            if ev_pvc:
+                parts.append("PVC usage (from evidence):\n" + "\n".join(f"- {e}" for e in ev_pvc[:10]))
+            else:
+                parts.append("Không có số PVC usage trong context (Prometheus kubelet volume metrics?).")
+
+        pressure = disk.get("nodes_disk_pressure") or []
+        node_fs = disk.get("node_filesystem") or []
         if pressure:
             parts.append(
                 "Nodes DiskPressure=True:\n"
@@ -368,7 +396,8 @@ def _ops_fallback_brief(question: str, payload: dict[str, Any]) -> tuple[str, li
             parts.append(
                 "Node filesystem:\n"
                 + "\n".join(
-                    f"- {n.get('node') or n.get('instance')}: {n.get('usage_percent') or n.get('pct')}%"
+                    f"- {n.get('node') or n.get('instance')}: "
+                    f"{n.get('used_percent') or n.get('usage_percent') or n.get('pct')}%"
                     for n in node_fs[:8]
                     if isinstance(n, dict)
                 )
@@ -376,8 +405,15 @@ def _ops_fallback_brief(question: str, payload: dict[str, Any]) -> tuple[str, li
         issues = facts.get("pvc_issues") or []
         if issues:
             parts.append(
-                "PVC issues:\n"
-                + "\n".join(f"- {i}" if isinstance(i, str) else f"- {i}" for i in issues[:6])
+                "PVC not Bound:\n"
+                + "\n".join(
+                    (
+                        f"- {i.get('namespace')}/{i.get('name')} phase={i.get('phase')}"
+                        if isinstance(i, dict)
+                        else f"- {i}"
+                    )
+                    for i in issues[:6]
+                )
             )
     if highlights:
         parts.append("Highlights:\n" + "\n".join(f"- {h}" for h in highlights[:8]))
@@ -410,7 +446,7 @@ async def _synthesize_bounded(**kwargs: Any) -> tuple[str, list[str], str, str] 
     # leave ~30s for ops context + serialization under a 120s wall
     cap = float(settings.ollama_timeout_seconds)
     if (settings.llm_provider or "").lower() == "ollama":
-        cap = min(cap, 75.0)
+        cap = min(cap, 45.0)
     else:
         cap = min(cap, 55.0)
     try:

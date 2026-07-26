@@ -29,4 +29,7 @@ llm:
   provider: ollama
   ollamaBaseUrl: "http://ollama.aiops-core.svc:11434"
   ollamaModel: "qwen2.5:3b"
-  ollamaTimeoutSeconds: "75"
+  # Fail fast: ops ~3s + LLM ≤5s → 200 template trước tường ~120s (ERR_EMPTY_RESPONSE).
+  # Tăng lại (45–75) sau khi qwen trả lời ổn định trên CPU.
+  ollamaTimeoutSeconds: "5"
+  chatEnabled: true
