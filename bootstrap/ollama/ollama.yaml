@@ -1,4 +1,5 @@
-# Ollama on OpenShift — PVC writable via runAsUser 0 (SCC ollama-fs RunAsAny)
+# Ollama — OpenShift restricted-compatible (no root, no fixed fsGroup).
+# Uses emptyDir (writable by arbitrary UID). Model pulled on container start.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -7,64 +8,6 @@ metadata:
   labels:
     app.kubernetes.io/name: ollama
     app.kubernetes.io/part-of: open-aiops-platform
----
-apiVersion: security.openshift.io/v1
-kind: SecurityContextConstraints
-metadata:
-  name: ollama-fs
-  labels:
-    app.kubernetes.io/name: ollama
-    app.kubernetes.io/part-of: open-aiops-platform
-allowHostDirVolumePlugin: false
-allowHostIPC: false
-allowHostNetwork: false
-allowHostPID: false
-allowHostPorts: false
-allowPrivilegeEscalation: false
-allowPrivilegedContainer: false
-allowedCapabilities: null
-defaultAddCapabilities: null
-fsGroup:
-  type: RunAsAny
-groups: []
-priority: 10
-readOnlyRootFilesystem: false
-requiredDropCapabilities:
-  - KILL
-  - MKNOD
-  - SETUID
-  - SETGID
-runAsUser:
-  type: RunAsAny
-seLinuxContext:
-  type: MustRunAs
-seccompProfiles:
-  - runtime/default
-supplementalGroups:
-  type: RunAsAny
-users:
-  - system:serviceaccount:aiops-core:ollama
-volumes:
-  - configMap
-  - downwardAPI
-  - emptyDir
-  - persistentVolumeClaim
-  - projected
-  - secret
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: ollama-models
-  namespace: aiops-core
-  labels:
-    app.kubernetes.io/name: ollama
-    app.kubernetes.io/part-of: open-aiops-platform
-spec:
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: 40Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -75,7 +18,7 @@ metadata:
     app.kubernetes.io/name: ollama
     app.kubernetes.io/part-of: open-aiops-platform
   annotations:
-    aiops.platform/ollama-datadir: "v4-root-on-pvc"
+    aiops.platform/ollama-datadir: "v5-emptydir-restricted"
 spec:
   replicas: 1
   selector:
@@ -88,35 +31,13 @@ spec:
       labels:
         app.kubernetes.io/name: ollama
       annotations:
-        aiops.platform/ollama-datadir: "v4-root-on-pvc"
+        aiops.platform/ollama-datadir: "v5-emptydir-restricted"
     spec:
       serviceAccountName: ollama
       securityContext:
-        runAsNonRoot: false
-        runAsUser: 0
-        fsGroup: 0
+        runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      initContainers:
-        - name: fix-perms
-          image: registry.access.redhat.com/ubi9/ubi-minimal:latest
-          command:
-            - /bin/sh
-            - -ec
-            - |
-              mkdir -p /data/.ollama /data/models
-              chmod -R 777 /data
-              ls -la /data
-          securityContext:
-            runAsUser: 0
-            runAsNonRoot: false
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-          volumeMounts:
-            - name: models
-              mountPath: /data
       containers:
         - name: ollama
           image: docker.io/ollama/ollama:0.6.5
@@ -131,14 +52,42 @@ spec:
             - name: OLLAMA_HOST
               value: "0.0.0.0:11434"
             - name: OLLAMA_KEEP_ALIVE
-              value: "30m"
+              value: "24h"
+            - name: MODEL
+              value: "qwen2.5:3b"
           securityContext:
-            runAsUser: 0
-            runAsNonRoot: false
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
+            runAsNonRoot: true
+          # Serve + ensure model (emptyDir is wiped on reschedule → re-pull)
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              mkdir -p "${HOME}/models" "${HOME}/.ollama"
+              ollama serve &
+              pid=$!
+              echo "Waiting for ollama API..."
+              i=0
+              until ollama list >/dev/null 2>&1; do
+                i=$((i+1))
+                if [ "$i" -gt 60 ]; then
+                  echo "ollama serve failed to become ready"
+                  kill "$pid" 2>/dev/null || true
+                  exit 1
+                fi
+                sleep 2
+              done
+              if ! ollama list 2>/dev/null | grep -q "${MODEL}"; then
+                echo "Pulling ${MODEL} (first start / new emptyDir)..."
+                ollama pull "${MODEL}"
+              else
+                echo "Model ${MODEL} already present."
+              fi
+              ollama list
+              wait "$pid"
           resources:
             requests:
               cpu: "1"
@@ -147,25 +96,33 @@ spec:
               cpu: "4"
               memory: 8Gi
           volumeMounts:
-            - name: models
+            - name: data
               mountPath: /var/lib/ollama
           readinessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 20
+            initialDelaySeconds: 30
             periodSeconds: 15
-            failureThreshold: 12
+            failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 60
+            initialDelaySeconds: 120
             periodSeconds: 30
+            failureThreshold: 6
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+            failureThreshold: 60
       volumes:
-        - name: models
-          persistentVolumeClaim:
-            claimName: ollama-models
+        # Writable by OpenShift arbitrary UID; models re-pulled after pod recreate
+        - name: data
+          emptyDir:
+            sizeLimit: 20Gi
 ---
 apiVersion: v1
 kind: Service
@@ -199,74 +156,3 @@ spec:
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
----
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: ollama-pull-qwen25-3b
-  namespace: aiops-core
-  labels:
-    app.kubernetes.io/name: ollama
-    app.kubernetes.io/component: model-pull
-    app.kubernetes.io/part-of: open-aiops-platform
-  annotations:
-    argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
-spec:
-  backoffLimit: 8
-  ttlSecondsAfterFinished: 604800
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: ollama
-        app.kubernetes.io/component: model-pull
-    spec:
-      restartPolicy: OnFailure
-      serviceAccountName: ollama
-      securityContext:
-        runAsNonRoot: false
-        runAsUser: 0
-        seccompProfile:
-          type: RuntimeDefault
-      containers:
-        - name: pull
-          image: docker.io/ollama/ollama:0.6.5
-          env:
-            - name: HOME
-              value: /tmp
-            - name: OLLAMA_HOST
-              value: "http://ollama.aiops-core.svc:11434"
-            - name: MODEL
-              value: "qwen2.5:3b"
-          securityContext:
-            runAsUser: 0
-            runAsNonRoot: false
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-          command:
-            - /bin/sh
-            - -ec
-            - |
-              echo "Waiting for Ollama at ${OLLAMA_HOST}..."
-              i=0
-              until ollama list >/dev/null 2>&1; do
-                i=$((i+1))
-                if [ "$i" -gt 90 ]; then
-                  echo "timeout waiting for ollama"
-                  exit 1
-                fi
-                sleep 5
-              done
-              echo "Pulling ${MODEL}..."
-              ollama pull "${MODEL}"
-              ollama list
-              echo "Model ready."
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 1Gi

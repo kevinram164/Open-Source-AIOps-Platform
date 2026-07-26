@@ -1,72 +1,33 @@
 # Ollama LLM for Open Source AIOps Platform (GitOps)
 
-Chat (incident-api) and RCA (rca-agent) use **`LLM_PROVIDER=ollama|openai`**.
+Chat / RCA use `LLM_PROVIDER=ollama` → `http://ollama.aiops-core.svc:11434`, model `qwen2.5:3b`.
 
-## OpenShift notes
+## Why emptyDir (not PVC) on this lab
 
-Pods run as **non-root**. Empty `HOME` → Ollama tries `mkdir /.ollama` → CrashLoop.
+`aiops-core` enforces PodSecurity **restricted** → **cannot** `runAsUser: 0`.  
+NFS PVC then often returns `permission denied` for arbitrary UIDs.
 
-Correct layout in manifests:
+Lab choice: **emptyDir 20Gi** (always writable) + **pull `qwen2.5:3b` on container start**.  
+Trade-off: reschedule pod = re-pull model (~2GB, a few minutes).
 
-```yaml
-env:
-  - name: HOME
-    value: /var/lib/ollama
-  - name: OLLAMA_MODELS          # directory path, NOT model name
-    value: /var/lib/ollama/models
-volumeMounts:
-  - name: models
-    mountPath: /var/lib/ollama
-```
+## Argo CD
 
-PVC `permission denied` on `/var/lib/ollama/.ollama` means the volume is not
-writable by the pod UID. Lab fix: SCC **`ollama-fs`** with `runAsUser: RunAsAny`
-and the Deployment runs as **UID 0** + initContainer `chmod 777` on the PVC.
+Application **`aiops-ollama`** → path `bootstrap/ollama`.
 
 ```bash
-oc apply -f bootstrap/ollama/ollama.yaml
-# ensure SCC is picked up
-oc get scc ollama-fs -o yaml | grep -A2 runAsUser
-oc -n aiops-core delete pod -l app.kubernetes.io/name=ollama --force --grace-period=0
-oc -n aiops-core logs -l app.kubernetes.io/name=ollama -c ollama --tail=30
-```
-
-## Argo CD (lab)
-
-Application **`aiops-ollama`** (under `aiops-core` app-of-apps):
-
-| Field | Value |
-|-------|--------|
-| Path | `bootstrap/ollama` |
-| Namespace | `aiops-core` |
-| Sync wave | `2` (before incident-api / rca-agent) |
-| Resources | PVC `ollama-models` 40Gi, Deployment, Service, Route, Job pull |
-
-PostSync Job **`ollama-pull-qwen25-3b`** runs:
-
-```text
-OLLAMA_HOST=http://ollama.aiops-core.svc:11434
-ollama pull qwen2.5:3b
-```
-
-After push to `main`, Argo syncs automatically (selfHeal). Re-pull model:
-
-```bash
+git pull
 oc -n aiops-core delete job ollama-pull-qwen25-3b --ignore-not-found
-# then Sync aiops-ollama in Argo (hook recreates Job)
-```
-
-Verify:
-
-```bash
-oc -n aiops-core get deploy,svc,pvc,job -l app.kubernetes.io/name=ollama
-oc -n aiops-core logs job/ollama-pull-qwen25-3b
+oc -n aiops-core delete scc ollama-fs --ignore-not-found
+oc apply -f bootstrap/ollama/ollama.yaml
+oc -n aiops-core rollout status deploy/ollama --timeout=10m
+oc -n aiops-core logs -l app.kubernetes.io/name=ollama -c ollama -f
+# expect: Pulling qwen2.5:3b ... then Ready
 oc -n aiops-core exec deploy/ollama -- ollama list
 ```
 
-## Config
+First start can take **several minutes** while the model downloads (startupProbe allows ~10m).
 
-`aiops-platform-config`:
+## Config
 
 ```yaml
 LLM_PROVIDER: "ollama"
@@ -74,15 +35,14 @@ OLLAMA_BASE_URL: "http://ollama.aiops-core.svc:11434"
 OLLAMA_MODEL: "qwen2.5:3b"
 ```
 
-## Resources (3B CPU lab)
+## Resources
 
 | | |
 |--|--|
-| PVC | 40Gi models |
-| Deploy requests | 1 CPU / 4Gi |
-| Deploy limits | 4 CPU / 8Gi |
-| Model disk | ~2Gi for qwen2.5:3b |
+| emptyDir | 20Gi |
+| requests | 1 CPU / 4Gi |
+| limits | 4 CPU / 8Gi |
 
-## Switch back to OpenAI
+## Optional later: persistent PVC
 
-Set `LLM_PROVIDER=openai` + secret `openai-api-key`, restart rca-agent / incident-api.
+Needs either namespace PSA `baseline`/`privileged` **or** NFS `mountPermissions: "0777"` + non-root writable volume — then remount PVC at `/var/lib/ollama` and drop the start-up pull if models already present.
