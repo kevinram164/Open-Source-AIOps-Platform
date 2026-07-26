@@ -1,5 +1,5 @@
-# Ollama in aiops-core — synced by Argo (aiops-ollama / bootstrap).
-# Model pull Job downloads qwen2.5:3b once PVC is ready.
+# Ollama in aiops-core — OpenShift-safe (non-root HOME + PVC).
+# Argo Application: aiops-ollama → path bootstrap/ollama
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -34,6 +34,12 @@ spec:
       labels:
         app.kubernetes.io/name: ollama
     spec:
+      # OpenShift: arbitrary UID cannot write /root or /.ollama
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 1000
       containers:
         - name: ollama
           image: docker.io/ollama/ollama:0.6.5
@@ -41,12 +47,21 @@ spec:
             - name: http
               containerPort: 11434
           env:
+            # Critical: Ollama stores data under $HOME/.ollama
+            - name: HOME
+              value: /ollama
             - name: OLLAMA_HOST
               value: "0.0.0.0:11434"
             - name: OLLAMA_KEEP_ALIVE
               value: "30m"
             - name: OLLAMA_MODELS
               value: "qwen2.5:3b"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
           resources:
             requests:
               cpu: "1"
@@ -55,8 +70,9 @@ spec:
               cpu: "4"
               memory: 8Gi
           volumeMounts:
+            # HOME=/ollama → models live at /ollama/.ollama on this volume
             - name: models
-              mountPath: /root/.ollama
+              mountPath: /ollama
           readinessProbe:
             httpGet:
               path: /
@@ -108,7 +124,6 @@ spec:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
 ---
-# Pull model after Service is up. Re-run: delete job then sync Argo.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -131,14 +146,26 @@ spec:
         app.kubernetes.io/component: model-pull
     spec:
       restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: pull
           image: docker.io/ollama/ollama:0.6.5
           env:
+            - name: HOME
+              value: /tmp
             - name: OLLAMA_HOST
               value: "http://ollama.aiops-core.svc:11434"
             - name: MODEL
               value: "qwen2.5:3b"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
           command:
             - /bin/sh
             - -ec

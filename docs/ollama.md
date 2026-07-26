@@ -2,6 +2,22 @@
 
 Chat (incident-api) and RCA (rca-agent) use **`LLM_PROVIDER=ollama|openai`**.
 
+## OpenShift notes
+
+Pods run as **non-root**. Do **not** mount at `/root/.ollama` without `HOME` —
+Ollama then tries `mkdir /.ollama` → CrashLoop (`permission denied`).
+
+Lab fix in manifests:
+
+```yaml
+env:
+  - name: HOME
+    value: /ollama
+volumeMounts:
+  - name: models
+    mountPath: /ollama   # data → /ollama/.ollama on PVC
+```
+
 ## Argo CD (lab)
 
 Application **`aiops-ollama`** (under `aiops-core` app-of-apps):
