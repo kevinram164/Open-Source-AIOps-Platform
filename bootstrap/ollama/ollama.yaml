@@ -1,5 +1,4 @@
-# Ollama — OpenShift-safe data dir (never write /.ollama)
-# Fix: HOME + OLLAMA_MODELS must be writable paths on the PVC.
+# Ollama — compatible with OpenShift restricted-v2 (no fixed fsGroup: 1000)
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -9,8 +8,48 @@ metadata:
     app.kubernetes.io/name: ollama
     app.kubernetes.io/part-of: open-aiops-platform
 ---
-# Allow non-root write to PVC; if still denied, grant anyuid:
-#   oc adm policy add-scc-to-user anyuid -z ollama -n aiops-core
+# SCC: allow any fsGroup so PVC is writable under restricted namespaces
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: ollama-fs
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/part-of: open-aiops-platform
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegeEscalation: false
+allowPrivilegedContainer: false
+allowedCapabilities: null
+defaultAddCapabilities: null
+fsGroup:
+  type: RunAsAny
+groups: []
+priority: null
+readOnlyRootFilesystem: false
+requiredDropCapabilities:
+  - ALL
+runAsUser:
+  type: MustRunAsRange
+seLinuxContext:
+  type: MustRunAs
+seccompProfiles:
+  - runtime/default
+supplementalGroups:
+  type: RunAsAny
+users:
+  - system:serviceaccount:aiops-core:ollama
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - persistentVolumeClaim
+  - projected
+  - secret
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -34,8 +73,7 @@ metadata:
     app.kubernetes.io/name: ollama
     app.kubernetes.io/part-of: open-aiops-platform
   annotations:
-    # bump to force rollout after HOME/path fix
-    aiops.platform/ollama-datadir: "v2-home-var-lib"
+    aiops.platform/ollama-datadir: "v3-scc-no-fixed-fsgroup"
 spec:
   replicas: 1
   selector:
@@ -48,35 +86,15 @@ spec:
       labels:
         app.kubernetes.io/name: ollama
       annotations:
-        aiops.platform/ollama-datadir: "v2-home-var-lib"
+        aiops.platform/ollama-datadir: "v3-scc-no-fixed-fsgroup"
     spec:
       serviceAccountName: ollama
+      # Do NOT set fsGroup: 1000 — restricted-v2 rejects it.
+      # ollama-fs SCC (RunAsAny) + OpenShift will admit the pod.
       securityContext:
         runAsNonRoot: true
-        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      initContainers:
-        # Ensure PVC is writable by arbitrary OpenShift UID
-        - name: fix-perms
-          image: registry.access.redhat.com/ubi9/ubi-minimal:latest
-          command:
-            - /bin/sh
-            - -ec
-            - |
-              mkdir -p /data/models /data/.ollama
-              chmod -R g+rwX /data || true
-              # best-effort chown (may no-op without privileges)
-              chown -R 1000:1000 /data 2>/dev/null || true
-              ls -la /data
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-            runAsNonRoot: true
-          volumeMounts:
-            - name: models
-              mountPath: /data
       containers:
         - name: ollama
           image: docker.io/ollama/ollama:0.6.5
@@ -84,10 +102,8 @@ spec:
             - name: http
               containerPort: 11434
           env:
-            # MUST be a real directory on the volume — never empty HOME (→ /.ollama)
             - name: HOME
               value: /var/lib/ollama
-            # Directory path for models (NOT the model name)
             - name: OLLAMA_MODELS
               value: /var/lib/ollama/models
             - name: OLLAMA_HOST
@@ -97,7 +113,8 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
-              drop: ["ALL"]
+              drop:
+                - ALL
             runAsNonRoot: true
           resources:
             requests:
@@ -122,6 +139,13 @@ spec:
               port: http
             initialDelaySeconds: 60
             periodSeconds: 30
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -ec
+                  - mkdir -p /var/lib/ollama/models && chmod -R g+rwX /var/lib/ollama || true
       volumes:
         - name: models
           persistentVolumeClaim:
@@ -200,7 +224,8 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
-              drop: ["ALL"]
+              drop:
+                - ALL
             runAsNonRoot: true
           command:
             - /bin/sh

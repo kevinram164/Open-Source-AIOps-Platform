@@ -19,19 +19,14 @@ volumeMounts:
     mountPath: /var/lib/ollama
 ```
 
-If PVC still not writable after sync:
+If admission fails with `fsGroup: 1000 is not an allowed group`:
+do **not** set a fixed `fsGroup`. Lab uses SCC **`ollama-fs`** (`fsGroup: RunAsAny`)
+bound to SA `ollama`.
 
 ```bash
-oc adm policy add-scc-to-user anyuid -z ollama -n aiops-core
-oc -n aiops-core rollout restart deploy/ollama
-```
-
-Force apply / verify env on running pod:
-
-```bash
-oc -n aiops-core apply -f bootstrap/ollama/ollama.yaml
-oc -n aiops-core set env deploy/ollama --list | grep -E 'HOME|OLLAMA'
-oc -n aiops-core logs -l app.kubernetes.io/name=ollama -c ollama --tail=20
+oc apply -f bootstrap/ollama/ollama.yaml
+oc -n aiops-core get scc ollama-fs
+oc -n aiops-core get pod -l app.kubernetes.io/name=ollama
 ```
 
 ## Argo CD (lab)
