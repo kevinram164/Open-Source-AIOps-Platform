@@ -19,14 +19,16 @@ volumeMounts:
     mountPath: /var/lib/ollama
 ```
 
-If admission fails with `fsGroup: 1000 is not an allowed group`:
-do **not** set a fixed `fsGroup`. Lab uses SCC **`ollama-fs`** (`fsGroup: RunAsAny`)
-bound to SA `ollama`.
+PVC `permission denied` on `/var/lib/ollama/.ollama` means the volume is not
+writable by the pod UID. Lab fix: SCC **`ollama-fs`** with `runAsUser: RunAsAny`
+and the Deployment runs as **UID 0** + initContainer `chmod 777` on the PVC.
 
 ```bash
 oc apply -f bootstrap/ollama/ollama.yaml
-oc -n aiops-core get scc ollama-fs
-oc -n aiops-core get pod -l app.kubernetes.io/name=ollama
+# ensure SCC is picked up
+oc get scc ollama-fs -o yaml | grep -A2 runAsUser
+oc -n aiops-core delete pod -l app.kubernetes.io/name=ollama --force --grace-period=0
+oc -n aiops-core logs -l app.kubernetes.io/name=ollama -c ollama --tail=30
 ```
 
 ## Argo CD (lab)

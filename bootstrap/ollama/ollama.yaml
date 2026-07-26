@@ -1,4 +1,4 @@
-# Ollama — compatible with OpenShift restricted-v2 (no fixed fsGroup: 1000)
+# Ollama on OpenShift — PVC writable via runAsUser 0 (SCC ollama-fs RunAsAny)
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -8,7 +8,6 @@ metadata:
     app.kubernetes.io/name: ollama
     app.kubernetes.io/part-of: open-aiops-platform
 ---
-# SCC: allow any fsGroup so PVC is writable under restricted namespaces
 apiVersion: security.openshift.io/v1
 kind: SecurityContextConstraints
 metadata:
@@ -28,12 +27,15 @@ defaultAddCapabilities: null
 fsGroup:
   type: RunAsAny
 groups: []
-priority: null
+priority: 10
 readOnlyRootFilesystem: false
 requiredDropCapabilities:
-  - ALL
+  - KILL
+  - MKNOD
+  - SETUID
+  - SETGID
 runAsUser:
-  type: MustRunAsRange
+  type: RunAsAny
 seLinuxContext:
   type: MustRunAs
 seccompProfiles:
@@ -73,7 +75,7 @@ metadata:
     app.kubernetes.io/name: ollama
     app.kubernetes.io/part-of: open-aiops-platform
   annotations:
-    aiops.platform/ollama-datadir: "v3-scc-no-fixed-fsgroup"
+    aiops.platform/ollama-datadir: "v4-root-on-pvc"
 spec:
   replicas: 1
   selector:
@@ -86,15 +88,35 @@ spec:
       labels:
         app.kubernetes.io/name: ollama
       annotations:
-        aiops.platform/ollama-datadir: "v3-scc-no-fixed-fsgroup"
+        aiops.platform/ollama-datadir: "v4-root-on-pvc"
     spec:
       serviceAccountName: ollama
-      # Do NOT set fsGroup: 1000 — restricted-v2 rejects it.
-      # ollama-fs SCC (RunAsAny) + OpenShift will admit the pod.
       securityContext:
-        runAsNonRoot: true
+        runAsNonRoot: false
+        runAsUser: 0
+        fsGroup: 0
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: fix-perms
+          image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              mkdir -p /data/.ollama /data/models
+              chmod -R 777 /data
+              ls -la /data
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: models
+              mountPath: /data
       containers:
         - name: ollama
           image: docker.io/ollama/ollama:0.6.5
@@ -111,11 +133,12 @@ spec:
             - name: OLLAMA_KEEP_ALIVE
               value: "30m"
           securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
-            runAsNonRoot: true
           resources:
             requests:
               cpu: "1"
@@ -139,13 +162,6 @@ spec:
               port: http
             initialDelaySeconds: 60
             periodSeconds: 30
-          lifecycle:
-            postStart:
-              exec:
-                command:
-                  - /bin/sh
-                  - -ec
-                  - mkdir -p /var/lib/ollama/models && chmod -R g+rwX /var/lib/ollama || true
       volumes:
         - name: models
           persistentVolumeClaim:
@@ -208,7 +224,8 @@ spec:
       restartPolicy: OnFailure
       serviceAccountName: ollama
       securityContext:
-        runAsNonRoot: true
+        runAsNonRoot: false
+        runAsUser: 0
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -222,11 +239,12 @@ spec:
             - name: MODEL
               value: "qwen2.5:3b"
           securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
-            runAsNonRoot: true
           command:
             - /bin/sh
             - -ec
