@@ -484,7 +484,11 @@ async def synthesize_with_openai(
             used_model,
         )
     except Exception as exc:  # noqa: BLE001
-        log.error("chat_llm_failed", error=str(exc), provider=settings.llm_provider)
+        log.error(
+            "chat_llm_failed",
+            error=repr(exc) or type(exc).__name__,
+            provider=settings.llm_provider,
+        )
         return None
 
 

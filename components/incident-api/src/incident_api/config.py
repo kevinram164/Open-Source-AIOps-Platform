@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     ollama_base_url: str = "http://ollama.aiops-core.svc:11434"
     ollama_model: str = "qwen2.5:3b"
-    ollama_timeout_seconds: int = 180
+    ollama_timeout_seconds: int = 300
     api_token: str = ""
     correlation_time_window_seconds: int = 300
     correlation_max_alerts_per_incident: int = 50
