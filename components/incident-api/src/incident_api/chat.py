@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from typing import Any
@@ -242,8 +243,10 @@ async def fetch_ops_context(
 ) -> dict[str, Any]:
     """Multi-facet platform context — answers many question types without topic routing."""
     url = f"{settings.rca_agent_url.rstrip('/')}/api/v1/ops/context"
+    # Keep headroom under ~120s browser/proxy cutoffs when LLM also runs
+    ops_timeout = 25.0 if (settings.llm_provider or "").lower() == "ollama" else 60.0
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=ops_timeout) as client:
             resp = await client.post(
                 url, json={"question": question, "namespace": namespace}
             )
@@ -326,13 +329,56 @@ def _ops_fallback_brief(question: str, payload: dict[str, Any]) -> tuple[str, li
     """Fallback when LLM unavailable — show compact multi-facet brief, not one topic."""
     summary = payload.get("summary") or {}
     facts = payload.get("facts") or {}
+    disk = facts.get("disk") if isinstance(facts.get("disk"), dict) else {}
     evidence = _as_str_list(payload.get("evidence"), limit=20)
     highlights = summary.get("highlights") or []
     counts = summary.get("counts") or {}
+    q = (question or "").lower()
     parts = [
         f"Câu hỏi: {question}",
         f"Scope: {summary.get('scope', 'cluster')} · metrics={summary.get('metrics_source', 'n/a')}",
     ]
+    # Prefer question-relevant facts first (PVC / disk)
+    if any(k in q for k in ("pvc", "disk", "filesystem", "ổ cứng", "dung lượng")):
+        pvc_hi = [
+            p
+            for p in (disk.get("pvc_usage") or [])
+            if isinstance(p, dict) and float(p.get("usage_percent") or p.get("pct") or 0) >= 80
+        ][:8]
+        if not pvc_hi:
+            pvc_hi = (disk.get("pvc_usage") or [])[:8]
+        pressure = disk.get("nodes_disk_pressure") or []
+        node_fs = disk.get("node_filesystem") or []
+        if pvc_hi:
+            parts.append(
+                "PVC usage:\n"
+                + "\n".join(
+                    f"- {p.get('namespace', '?')}/{p.get('name') or p.get('pvc')}: "
+                    f"{p.get('usage_percent') or p.get('pct') or '?'}%"
+                    for p in pvc_hi
+                    if isinstance(p, dict)
+                )
+            )
+        if pressure:
+            parts.append(
+                "Nodes DiskPressure=True:\n"
+                + "\n".join(f"- {n.get('name') or n}" for n in pressure[:8])
+            )
+        if node_fs:
+            parts.append(
+                "Node filesystem:\n"
+                + "\n".join(
+                    f"- {n.get('node') or n.get('instance')}: {n.get('usage_percent') or n.get('pct')}%"
+                    for n in node_fs[:8]
+                    if isinstance(n, dict)
+                )
+            )
+        issues = facts.get("pvc_issues") or []
+        if issues:
+            parts.append(
+                "PVC issues:\n"
+                + "\n".join(f"- {i}" if isinstance(i, str) else f"- {i}" for i in issues[:6])
+            )
     if highlights:
         parts.append("Highlights:\n" + "\n".join(f"- {h}" for h in highlights[:8]))
     if counts:
@@ -341,7 +387,7 @@ def _ops_fallback_brief(question: str, payload: dict[str, Any]) -> tuple[str, li
             + ", ".join(f"{k}={v}" for k, v in counts.items() if v)
         )
     top = facts.get("top_cpu_pods") or []
-    if top:
+    if top and "cpu" in q:
         parts.append(
             "Top CPU:\n"
             + "\n".join(
@@ -349,14 +395,29 @@ def _ops_fallback_brief(question: str, payload: dict[str, Any]) -> tuple[str, li
             )
         )
     parts.append(
-        "LLM chưa trả lời kịp (Ollama cold-start / timeout). "
-        "Warm model rồi hỏi lại; hoặc xem Highlights/evidence bên dưới."
+        "LLM chưa kịp (timeout <120s để tránh ERR_EMPTY_RESPONSE). "
+        "Facts trên lấy từ context pack."
     )
     return (
         "\n\n".join(parts),
         evidence,
-        "Hỏi lại bất kỳ câu ops nào; assistant dùng cùng platform context pack.",
+        "Hỏi lại; khi Ollama trả lời kịp sẽ có badge model qwen2.5:3b.",
     )
+
+
+async def _synthesize_bounded(**kwargs: Any) -> tuple[str, list[str], str, str] | None:
+    """Hard-cap LLM wait so Chat returns before ~120s proxy/browser cutoffs."""
+    # leave ~30s for ops context + serialization under a 120s wall
+    cap = float(settings.ollama_timeout_seconds)
+    if (settings.llm_provider or "").lower() == "ollama":
+        cap = min(cap, 75.0)
+    else:
+        cap = min(cap, 55.0)
+    try:
+        return await asyncio.wait_for(synthesize_with_openai(**kwargs), timeout=cap)
+    except asyncio.TimeoutError:
+        log.error("chat_llm_deadline", timeout_s=cap, provider=settings.llm_provider)
+        return None
 
 
 async def synthesize_with_openai(
@@ -674,7 +735,7 @@ async def handle_chat(
         incidents_brief = await recent_incidents_brief(session, namespace=ns)
         ops["recent_incidents"] = incidents_brief
         answer, evidence, recommendation = _ops_fallback_brief(question, ops)
-        synthesized = await synthesize_with_openai(
+        synthesized = await _synthesize_bounded(
             question=question,
             incident=None,
             rca={},
@@ -723,7 +784,7 @@ async def handle_chat(
         ops = await fetch_ops_context(question, namespace=namespace)
         incidents_brief = await recent_incidents_brief(session, namespace=namespace)
         answer, evidence, recommendation = _ops_fallback_brief(question, ops)
-        synthesized = await synthesize_with_openai(
+        synthesized = await _synthesize_bounded(
             question=question,
             incident=None,
             rca={},
@@ -769,7 +830,7 @@ async def handle_chat(
     rca = rca or {}
     remediations = await list_remediations_for_incident(incident.external_id)
 
-    synthesized = await synthesize_with_openai(
+    synthesized = await _synthesize_bounded(
         question=question,
         incident=incident,
         rca=rca,

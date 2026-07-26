@@ -50,27 +50,21 @@ OLLAMA_BASE_URL: "http://ollama.aiops-core.svc:11434"
 OLLAMA_MODEL: "qwen2.5:3b"
 ```
 
-### Chat 504 / Ollama `500` after 3m
+### Chat `ERR_EMPTY_RESPONSE` @ đúng 2 phút
 
-Log điển hình:
-```
-truncating input prompt limit=2048 prompt=3454
-POST "/v1/chat/completions" | 500 | 3m0s
-```
+Browser Network: **Time = 2 min** + `net::ERR_EMPTY_RESPONSE` dù Route = 300s.  
+Có hop khác (LB / proxy) cắt ~120s. Nếu LLM treo 180–300s → client **không nhận** cả fallback.
 
-Nguyên nhân: `OLLAMA_NUM_PARALLEL=4` → mỗi request chỉ còn **2048** ctx → prompt bị cắt → CPU generate lâu → timeout 3 phút.
+**Nguyên tắc:** ops + LLM phải xong **trước 120s** → `OLLAMA_TIMEOUT_SECONDS=75`, ops context ~25s, không kịp thì trả **template 200** (có PVC/disk facts).
 
-**Sửa Ollama ngay** (pod restart = emptyDir mất model → re-pull ~vài phút):
+Ngay trên cluster (không chờ rebuild):
 
 ```bash
-oc -n aiops-core apply -f bootstrap/ollama/ollama.yaml
-# hoặc: oc -n aiops-core set env deploy/ollama OLLAMA_NUM_PARALLEL=1 OLLAMA_CONTEXT_LENGTH=4096
-
-oc -n aiops-core rollout status deploy/ollama --timeout=15m
-oc -n aiops-core exec deploy/ollama -- ollama run qwen2.5:3b "ok"
+oc -n aiops-core set env deploy/incident-api OLLAMA_TIMEOUT_SECONDS=45
+# Ask lại trong <2 phút — phải thấy HTTP 200 (có thể badge template), không Failed to fetch
 ```
 
-**Sửa Chat** (cần rebuild `incident-api`): context pack thu nhỏ + `max_tokens≤400` cho Ollama.
+Rồi rebuild `incident-api` (+ optional console) từ commit mới để có deadline cứng + PVC fallback đẹp hơn.
 
 ## Resources
 

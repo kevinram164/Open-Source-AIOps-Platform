@@ -29,3 +29,4 @@ llm:
   provider: ollama
   ollamaBaseUrl: "http://ollama.aiops-core.svc:11434"
   ollamaModel: "qwen2.5:3b"
+  ollamaTimeoutSeconds: "75"

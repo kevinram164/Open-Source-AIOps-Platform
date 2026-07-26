@@ -73,7 +73,7 @@ spec:
             - name: OLLAMA_MODEL
               value: {{ .Values.llm.ollamaModel | default "qwen2.5:3b" | quote }}
             - name: OLLAMA_TIMEOUT_SECONDS
-              value: {{ .Values.llm.ollamaTimeoutSeconds | default "300" | quote }}
+              value: {{ .Values.llm.ollamaTimeoutSeconds | default "75" | quote }}
             {{- end }}
             {{- if .Values.openai.existingSecret }}
             - name: OPENAI_API_KEY

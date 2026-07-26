@@ -42,8 +42,8 @@ async def chat_completions(
         headers = {"Content-Type": "application/json"}
         if settings.openai_api_key:
             headers["Authorization"] = f"Bearer {settings.openai_api_key}"
-        # CPU 3B: keep output short or requests hit ~3m and return 500
-        max_tokens = min(max_tokens, 400)
+# CPU 3B: keep output short — long gens hit ~2–3m walls (ERR_EMPTY_RESPONSE / 500)
+        max_tokens = min(max_tokens, 250)
         timeout = float(settings.ollama_timeout_seconds)
     else:
         url = "https://api.openai.com/v1/chat/completions"
