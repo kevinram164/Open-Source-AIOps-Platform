@@ -19,10 +19,21 @@ LABEL org.opencontainers.image.title="rca-agent" \
       org.opencontainers.image.description="RCA Agent for Open Source AIOps Platform" \
       org.opencontainers.image.version="0.1.0-skeleton"
 
+ARG KUBECTL_VERSION=v1.29.14
+
 # OpenShift runs with arbitrary UID — ensure writable dirs
+# kubectl: python WS exec hits None.decode on this lab; kubectl exec is reliable
 RUN groupadd -r aiops && useradd -r -g aiops -d /app -s /sbin/nologin aiops \
     && mkdir -p /app /tmp \
-    && chown -R aiops:aiops /app /tmp
+    && chown -R aiops:aiops /app /tmp \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+         -o /usr/local/bin/kubectl \
+    && chmod 0755 /usr/local/bin/kubectl \
+    && apt-get purge -y curl \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

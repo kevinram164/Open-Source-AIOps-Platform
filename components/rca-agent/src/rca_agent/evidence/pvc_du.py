@@ -115,13 +115,62 @@ def _du_bytes(
     path: str,
     timeout_s: int = 12,
 ) -> int | None:
-    """Exec du in pod. Use websocket stream (_preload_content=False) — preload hits None.decode on OCP."""
+    """
+    Measure directory size inside the pod.
+
+    Prefer `kubectl exec` — kubernetes.stream WebSocket on this OCP lab raises
+    AttributeError: 'NoneType' object has no attribute 'decode'.
+    """
+    import shutil
+    import subprocess
     import time
 
+    # --- Path A: kubectl (in-cluster SA) ---
+    kubectl = shutil.which("kubectl")
+    if kubectl:
+        for inner in (
+            ["du", "-sb", path],
+            ["/bin/sh", "-c", f"du -sb {shlex.quote(path)} 2>/dev/null | cut -f1"],
+        ):
+            cmd = [
+                kubectl,
+                "exec",
+                "-n",
+                namespace,
+                pod,
+                "-c",
+                container,
+                "--request-timeout",
+                f"{timeout_s}s",
+                "--",
+                *inner,
+            ]
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_s + 3,
+                    check=False,
+                )
+                text = (proc.stdout or "").strip()
+                if proc.returncode == 0 and text:
+                    first = text.splitlines()[-1].split()[0]
+                    return int(first)
+                log.debug(
+                    "pvc_du_kubectl_failed",
+                    ns=namespace,
+                    pod=pod,
+                    rc=proc.returncode,
+                    err=(proc.stderr or "")[:240],
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.debug("pvc_du_kubectl_exc", error=str(exc))
+
+    # --- Path B: python stream (best-effort) ---
     commands: list[list[str]] = [
         ["du", "-sb", path],
         ["/bin/sh", "-c", f"du -sb {shlex.quote(path)} 2>/dev/null | cut -f1"],
-        ["/bin/bash", "-c", f"du -sb {shlex.quote(path)} 2>/dev/null | cut -f1"],
     ]
     last_err: str | None = None
     for cmd in commands:
@@ -146,21 +195,15 @@ def _du_bytes(
                 if resp.peek_stdout():
                     chunk = resp.read_stdout()
                     if chunk:
-                        stdout_parts.append(chunk)
+                        stdout_parts.append(
+                            chunk if isinstance(chunk, str) else chunk.decode("utf-8", "replace")
+                        )
                 if resp.peek_stderr():
                     _ = resp.read_stderr()
-            try:
-                if resp.peek_stdout():
-                    chunk = resp.read_stdout()
-                    if chunk:
-                        stdout_parts.append(chunk)
-            except Exception:  # noqa: BLE001
-                pass
             try:
                 resp.close()
             except Exception:  # noqa: BLE001
                 pass
-
             text = "".join(stdout_parts).strip()
             if not text:
                 last_err = "empty_stdout"
@@ -182,6 +225,7 @@ def _du_bytes(
         pod=pod,
         path=path,
         error=last_err,
+        has_kubectl=bool(kubectl),
     )
     return None
 
