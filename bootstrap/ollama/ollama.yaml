@@ -1,5 +1,6 @@
-# Ollama — OpenShift restricted-compatible (no root, no fixed fsGroup).
-# Uses emptyDir (writable by arbitrary UID). Model pulled on container start.
+# Ollama — OpenShift restricted (no root / no custom SCC).
+# OpenShift random UID has no passwd home → ollama writes /.ollama.
+# Fix: mount emptyDir at /.ollama (writable). Do NOT use runAsUser:0.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -18,7 +19,7 @@ metadata:
     app.kubernetes.io/name: ollama
     app.kubernetes.io/part-of: open-aiops-platform
   annotations:
-    aiops.platform/ollama-datadir: "v5-emptydir-restricted"
+    aiops.platform/ollama-datadir: "v6-mount-dot-ollama"
 spec:
   replicas: 1
   selector:
@@ -31,7 +32,7 @@ spec:
       labels:
         app.kubernetes.io/name: ollama
       annotations:
-        aiops.platform/ollama-datadir: "v5-emptydir-restricted"
+        aiops.platform/ollama-datadir: "v6-mount-dot-ollama"
     spec:
       serviceAccountName: ollama
       securityContext:
@@ -45,10 +46,11 @@ spec:
             - name: http
               containerPort: 11434
           env:
+            # Random UID → UserHomeDir is "/"; keep HOME off root FS
             - name: HOME
-              value: /var/lib/ollama
+              value: /tmp
             - name: OLLAMA_MODELS
-              value: /var/lib/ollama/models
+              value: /.ollama/models
             - name: OLLAMA_HOST
               value: "0.0.0.0:11434"
             - name: OLLAMA_KEEP_ALIVE
@@ -61,12 +63,12 @@ spec:
               drop:
                 - ALL
             runAsNonRoot: true
-          # Serve + ensure model (emptyDir is wiped on reschedule → re-pull)
           command:
             - /bin/sh
             - -ec
             - |
-              mkdir -p "${HOME}/models" "${HOME}/.ollama"
+              export HOME=/tmp
+              mkdir -p /.ollama/models
               ollama serve &
               pid=$!
               echo "Waiting for ollama API..."
@@ -96,8 +98,9 @@ spec:
               cpu: "4"
               memory: 8Gi
           volumeMounts:
-            - name: data
-              mountPath: /var/lib/ollama
+            # Exact path from the error — kubelet mounts it writable for any UID
+            - name: ollama-home
+              mountPath: /.ollama
           readinessProbe:
             httpGet:
               path: /
@@ -119,8 +122,7 @@ spec:
             periodSeconds: 10
             failureThreshold: 60
       volumes:
-        # Writable by OpenShift arbitrary UID; models re-pulled after pod recreate
-        - name: data
+        - name: ollama-home
           emptyDir:
             sizeLimit: 20Gi
 ---
@@ -147,6 +149,7 @@ metadata:
   namespace: aiops-core
   labels:
     app.kubernetes.io/name: ollama
+    app.kubernetes.io/part-of: open-aiops-platform
 spec:
   to:
     kind: Service
