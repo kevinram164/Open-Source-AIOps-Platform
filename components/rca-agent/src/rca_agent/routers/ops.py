@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 from fastapi import APIRouter
@@ -21,11 +22,20 @@ from rca_agent.evidence.ops_metrics import (
     collect_prom_top_pods,
     collect_workload_inventory,
 )
+from rca_agent.evidence.pvc_du import collect_pvc_usage_via_du
 
 router = APIRouter(prefix="/api/v1")
 
-# Ops + light PVC du must finish under browser ~120s wall (chat uses ~15s ops client timeout when ollama)
+# Full pack must finish under chat client timeout (~50–60s) + browser ~120s wall
 _OPS_CONTEXT_DEADLINE_S = 55.0
+# Cluster-wide PVC du alone often needs ~25–40s; give headroom without Prom/K8s pack
+_OPS_PVC_DEADLINE_S = 70.0
+
+_PVC_DISK_RE = re.compile(
+    r"\b(pvc|persistentvolumeclaim|disk|filesystem|storage|volume)\b|"
+    r"(ổ\s*cứng|dung\s*lượng|ổ\s*đĩa)",
+    re.IGNORECASE,
+)
 
 
 class OpsSnapshotRequest(BaseModel):
@@ -45,17 +55,99 @@ class ResolvePodRequest(BaseModel):
     pod_name: str
 
 
+def is_pvc_disk_question(question: str | None) -> bool:
+    return bool(question and _PVC_DISK_RE.search(question))
+
+
 async def _run(sync_fn, *args, **kwargs):
     return await asyncio.to_thread(sync_fn, *args, **kwargs)
 
 
-async def build_platform_context(namespace: str | None = None) -> dict[str, Any]:
+async def build_pvc_context(namespace: str | None = None) -> dict[str, Any]:
+    """PVC-only pack: du vs claim request — skips Prom + other collectors."""
+    warnings: list[str] = []
+    evidence: list[str] = []
+    try:
+        du = await asyncio.wait_for(
+            asyncio.to_thread(
+                collect_pvc_usage_via_du,
+                namespace=namespace,
+                max_pvcs=12 if not namespace else 10,
+                workers=3,
+            ),
+            timeout=_OPS_PVC_DEADLINE_S,
+        )
+    except asyncio.TimeoutError:
+        return {
+            "namespace": namespace,
+            "summary": {
+                "scope": namespace or "cluster",
+                "metrics_source": "timeout",
+                "counts": {},
+                "highlights": [
+                    f"PVC du timed out after {_OPS_PVC_DEADLINE_S:.0f}s"
+                ],
+            },
+            "facts": {"disk": {"pvc_usage": [], "pvc_usage_method": "du"}},
+            "evidence": [f"ops_pvc_timeout_{int(_OPS_PVC_DEADLINE_S)}s"],
+            "warnings": [f"build_pvc_context exceeded {_OPS_PVC_DEADLINE_S}s"],
+        }
+
+    warnings.extend(du.get("warnings") or [])
+    pvc_usage = [
+        r
+        for r in (du.get("pvc_usage") or [])
+        if isinstance(r, dict) and r.get("used_percent") is not None
+    ]
+    for p in pvc_usage[:12]:
+        evidence.append(
+            f"PVCUsage {p.get('namespace')}/{p.get('persistentvolumeclaim')}: "
+            f"used={p.get('used_percent')}% "
+            f"({p.get('used_human') or '?'}/{p.get('capacity_human') or '?'} claim) "
+            f"via=du"
+        )
+    hot = [p for p in pvc_usage if (p.get("used_percent") or 0) >= 80]
+    summary = {
+        "scope": namespace or "cluster (non-system namespaces)",
+        "metrics_source": "du",
+        "counts": {"pvc_hot": len(hot), "pvc_measured": len(pvc_usage)},
+        "highlights": (
+            [f"{len(hot)} PVC(s) ≥80% used (du vs claim)"]
+            if hot
+            else [f"{len(pvc_usage)} PVC(s) measured via du — none ≥80%"]
+            if pvc_usage
+            else ["No PVC usage measured via du"]
+        ),
+    }
+    return {
+        "namespace": namespace,
+        "summary": summary,
+        "facts": {
+            "metrics_source": "du",
+            "disk": {
+                "node_filesystem": [],
+                "pvc_usage": pvc_usage[:15],
+                "pvc_usage_method": "du",
+                "nodes_disk_pressure": [],
+            },
+        },
+        "evidence": evidence[:40],
+        "warnings": warnings[:20],
+    }
+
+
+async def build_platform_context(
+    namespace: str | None = None, *, question: str | None = None
+) -> dict[str, Any]:
     """
     Collect a general-purpose ops fact pack so chat can answer *many* questions
     without hardcoding one topic per release.
 
-    Hard deadline (~20s): partial facts + warnings beat ERR_EMPTY_RESPONSE.
+    PVC/disk questions use a lighter du-only path (avoids full-pack timeout).
     """
+    if is_pvc_disk_question(question):
+        return await build_pvc_context(namespace=namespace)
+
     try:
         return await asyncio.wait_for(
             _build_platform_context_inner(namespace),
@@ -310,7 +402,16 @@ async def ops_snapshot(req: OpsSnapshotRequest) -> dict[str, Any]:
 
 @router.post("/ops/context")
 async def ops_context(req: OpsContextRequest) -> dict[str, Any]:
-    data = await build_platform_context(namespace=req.namespace)
+    data = await build_platform_context(namespace=req.namespace, question=req.question)
+    if req.question:
+        data["question"] = req.question
+    return data
+
+
+@router.post("/ops/pvc")
+async def ops_pvc(req: OpsContextRequest) -> dict[str, Any]:
+    """PVC usage only (du vs claim) — preferred by Chat for disk/PVC questions."""
+    data = await build_pvc_context(namespace=req.namespace)
     if req.question:
         data["question"] = req.question
     return data

@@ -238,13 +238,30 @@ async def list_remediations_for_incident(external_id: str) -> list[dict[str, Any
         return []
 
 
+_PVC_DISK_RE = re.compile(
+    r"\b(pvc|persistentvolumeclaim|disk|filesystem|storage|volume)\b|"
+    r"(ổ\s*cứng|dung\s*lượng|ổ\s*đĩa)",
+    re.IGNORECASE,
+)
+
+
+def _is_pvc_disk_question(question: str) -> bool:
+    return bool(_PVC_DISK_RE.search(question or ""))
+
+
 async def fetch_ops_context(
     question: str, namespace: str | None = None
 ) -> dict[str, Any]:
-    """Multi-facet platform context — answers many question types without topic routing."""
-    url = f"{settings.rca_agent_url.rstrip('/')}/api/v1/ops/context"
-    # Keep headroom under ~120s browser/proxy cutoffs when LLM also runs
-    ops_timeout = 50.0 if (settings.llm_provider or "").lower() == "ollama" else 60.0
+    """Multi-facet platform context — PVC/disk questions use the fast du-only path."""
+    base = settings.rca_agent_url.rstrip("/")
+    pvc_q = _is_pvc_disk_question(question)
+    path = "/api/v1/ops/pvc" if pvc_q else "/api/v1/ops/context"
+    # PVC du cluster-wide often needs 25–40s; full pack stays shorter for LLM headroom
+    if pvc_q:
+        ops_timeout = 75.0
+    else:
+        ops_timeout = 50.0 if (settings.llm_provider or "").lower() == "ollama" else 60.0
+    url = f"{base}{path}"
     try:
         async with httpx.AsyncClient(timeout=ops_timeout) as client:
             resp = await client.post(
@@ -259,7 +276,7 @@ async def fetch_ops_context(
                 }
             return resp.json()
     except Exception as exc:  # noqa: BLE001
-        log.warning("ops_context_failed", error=str(exc))
+        log.warning("ops_context_failed", error=str(exc), path=path, timeout=ops_timeout)
         return {"warnings": [str(exc)], "facts": {}, "evidence": [], "summary": {}}
 
 
@@ -404,7 +421,10 @@ def _ops_fallback_brief(question: str, payload: dict[str, Any]) -> tuple[str, li
             if ev_pvc:
                 parts.append("PVC usage (from evidence):\n" + "\n".join(f"- {e}" for e in ev_pvc[:10]))
             else:
-                parts.append("Không có số PVC usage trong context (Prometheus kubelet volume metrics?).")
+                parts.append(
+                    "Không có số PVC usage trong context "
+                    "(rca-agent du chưa kịp / timeout, hoặc không có pod Running mount PVC)."
+                )
 
         pressure = disk.get("nodes_disk_pressure") or []
         node_fs = disk.get("node_filesystem") or []
