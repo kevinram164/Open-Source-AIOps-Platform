@@ -6,8 +6,12 @@ Measuring `du -sb <mountPath>` against PVC request size gives a usable per-claim
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
+import shutil
+import subprocess
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -17,7 +21,7 @@ from kubernetes.client.rest import ApiException
 
 log = structlog.get_logger()
 
-_SKIP_NS_PREFIX = ("openshift-", "kube-", "openshift")
+_SKIP_NS_PREFIX = ("openshift-", "kube-")
 
 
 def _core() -> client.CoreV1Api | None:
@@ -72,41 +76,57 @@ def _fmt_bytes(n: int) -> str:
     return f"{n}B"
 
 
-def _find_mount(
-    api: client.CoreV1Api, namespace: str, pvc_name: str
-) -> tuple[str, str, str] | None:
-    """Return (pod_name, container_name, mount_path) for a Running pod using the PVC."""
+def _pvc_request_bytes(pvc: Any) -> int:
     try:
-        pods = api.list_namespaced_pod(namespace).items
-    except ApiException:
-        return None
-    for pod in pods:
-        if (pod.status.phase if pod.status else None) != "Running":
+        req = pvc.spec.resources.requests.get("storage") if pvc.spec and pvc.spec.resources else None
+    except Exception:  # noqa: BLE001
+        req = None
+    return _parse_qty_bytes(str(req) if req is not None else None) or 0
+
+
+def _build_mount_index(
+    api: client.CoreV1Api, namespaces: list[str]
+) -> dict[tuple[str, str], tuple[str, str, str]]:
+    """
+    One pods list per namespace → map (ns, pvc_name) -> (pod, container, mount_path).
+    Much faster than listing pods once per PVC.
+    """
+    index: dict[tuple[str, str], tuple[str, str, str]] = {}
+    for ns in namespaces:
+        try:
+            pods = api.list_namespaced_pod(ns).items
+        except ApiException as exc:
+            log.debug("pvc_du_list_pods_failed", ns=ns, error=str(exc))
             continue
-        if not pod.spec or not pod.spec.volumes:
-            continue
-        vol_name = None
-        for vol in pod.spec.volumes:
-            pvc = vol.persistent_volume_claim
-            if pvc and pvc.claim_name == pvc_name:
-                vol_name = vol.name
-                break
-        if not vol_name:
-            continue
-        for c in pod.spec.containers or []:
-            for vm in c.volume_mounts or []:
-                if vm.name != vol_name:
-                    continue
-                path = vm.mount_path or ""
-                if vm.sub_path:
-                    path = path.rstrip("/") + "/" + vm.sub_path.lstrip("/")
-                if path:
-                    return pod.metadata.name, c.name, path
-    return None
+        for pod in pods:
+            if (pod.status.phase if pod.status else None) != "Running":
+                continue
+            if not pod.spec or not pod.spec.volumes:
+                continue
+            claim_to_vol: dict[str, str] = {}
+            for vol in pod.spec.volumes:
+                pvc = vol.persistent_volume_claim
+                if pvc and pvc.claim_name:
+                    claim_to_vol[pvc.claim_name] = vol.name
+            if not claim_to_vol:
+                continue
+            for c in pod.spec.containers or []:
+                for vm in c.volume_mounts or []:
+                    for claim, vol_name in claim_to_vol.items():
+                        if vm.name != vol_name:
+                            continue
+                        key = (ns, claim)
+                        if key in index:
+                            continue
+                        path = vm.mount_path or ""
+                        if vm.sub_path:
+                            path = path.rstrip("/") + "/" + vm.sub_path.lstrip("/")
+                        if path:
+                            index[key] = (pod.metadata.name, c.name, path)
+    return index
 
 
 def _du_bytes(
-    api: client.CoreV1Api,
     *,
     namespace: str,
     pod: str,
@@ -114,17 +134,7 @@ def _du_bytes(
     path: str,
     timeout_s: int = 8,
 ) -> int | None:
-    """
-    Measure directory size inside the pod via `kubectl exec`.
-
-    kubernetes.stream WebSocket raises None.decode on this OCP lab. kubectl needs
-    explicit in-cluster server/token/CA and a writable --cache-dir under /tmp
-    (pod rootfs is read-only).
-    """
-    import os
-    import shutil
-    import subprocess
-
+    """kubectl exec with explicit in-cluster auth + writable cache under /tmp."""
     kubectl = shutil.which("kubectl")
     if not kubectl:
         log.warning("pvc_du_no_kubectl", ns=namespace, pod=pod)
@@ -194,16 +204,8 @@ def _du_bytes(
                 first = text.splitlines()[-1].split()[0]
                 return int(first)
             last_err = (proc.stderr or proc.stdout or f"rc={proc.returncode}")[:300]
-            log.debug(
-                "pvc_du_kubectl_failed",
-                ns=namespace,
-                pod=pod,
-                rc=proc.returncode,
-                err=last_err,
-            )
         except Exception as exc:  # noqa: BLE001
             last_err = str(exc)
-            log.debug("pvc_du_kubectl_exc", error=last_err)
 
     log.warning(
         "pvc_du_exec_failed",
@@ -216,30 +218,71 @@ def _du_bytes(
     return None
 
 
+def _pick_candidates(
+    pvcs: list[Any],
+    mounts: dict[tuple[str, str], tuple[str, str, str]],
+    *,
+    max_pvcs: int,
+    namespace: str | None,
+) -> list[Any]:
+    """Prefer mountable PVCs; cluster-wide: round-robin across namespaces."""
+    mountable = [
+        p
+        for p in pvcs
+        if (p.metadata.namespace or "", p.metadata.name or "") in mounts
+    ]
+    if not mountable:
+        return []
+
+    mountable.sort(
+        key=lambda p: (
+            -_pvc_request_bytes(p),
+            p.metadata.namespace or "",
+            p.metadata.name or "",
+        )
+    )
+
+    if namespace:
+        return mountable[:max_pvcs]
+
+    by_ns: dict[str, list[Any]] = defaultdict(list)
+    for p in mountable:
+        by_ns[p.metadata.namespace or ""].append(p)
+
+    # Round-robin so platform + observability + postgres + … all appear
+    selected: list[Any] = []
+    ns_order = sorted(by_ns.keys(), key=lambda n: (-len(by_ns[n]), n))
+    while len(selected) < max_pvcs and by_ns:
+        progress = False
+        for ns in list(ns_order):
+            bucket = by_ns.get(ns) or []
+            if not bucket:
+                by_ns.pop(ns, None)
+                continue
+            selected.append(bucket.pop(0))
+            progress = True
+            if len(selected) >= max_pvcs:
+                break
+        if not progress:
+            break
+        ns_order = [n for n in ns_order if by_ns.get(n)]
+    return selected
+
+
 def _measure_one(
-    api: client.CoreV1Api, pvc: Any
-) -> dict[str, Any] | None:
+    pvc: Any,
+    mount: tuple[str, str, str],
+) -> dict[str, Any]:
     ns = pvc.metadata.namespace
     name = pvc.metadata.name
+    cap = _pvc_request_bytes(pvc) or None
     req = None
     try:
         req = pvc.spec.resources.requests.get("storage") if pvc.spec and pvc.spec.resources else None
     except Exception:  # noqa: BLE001
         req = None
-    cap = _parse_qty_bytes(str(req) if req is not None else None)
-    mount = _find_mount(api, ns, name)
-    if not mount:
-        return {
-            "namespace": ns,
-            "persistentvolumeclaim": name,
-            "method": "du",
-            "error": "no_running_pod_mount",
-            "capacity_bytes": cap,
-            "capacity_human": _fmt_bytes(cap) if cap else None,
-            "request": str(req) if req else None,
-        }
     pod, container, path = mount
-    used = _du_bytes(api, namespace=ns, pod=pod, container=container, path=path)
+    used = _du_bytes(namespace=ns, pod=pod, container=container, path=path)
     if used is None:
         return {
             "namespace": ns,
@@ -272,12 +315,12 @@ def collect_pvc_usage_via_du(
     *,
     namespace: str | None = None,
     max_pvcs: int = 12,
-    workers: int = 4,
+    workers: int = 3,
 ) -> dict[str, Any]:
     """
     Per-PVC usage = du(mount) / PVC request size.
 
-    Returns rows sorted by used_percent desc (then used_bytes).
+    Cluster-wide samples across namespaces (not only the largest claims in one ns).
     """
     out: dict[str, Any] = {"pvc_usage": [], "warnings": [], "source": "du"}
     api = _core()
@@ -287,14 +330,14 @@ def collect_pvc_usage_via_du(
 
     try:
         if namespace:
-            items = api.list_namespaced_persistent_volume_claim(namespace).items
+            items = list(api.list_namespaced_persistent_volume_claim(namespace).items)
         else:
-            items = api.list_persistent_volume_claim_for_all_namespaces().items
+            items = list(api.list_persistent_volume_claim_for_all_namespaces().items)
     except Exception as exc:  # noqa: BLE001
         out["warnings"].append(f"list pvc: {exc}")
         return out
 
-    candidates: list[Any] = []
+    bound: list[Any] = []
     for pvc in items:
         ns = pvc.metadata.namespace or ""
         if not namespace and any(ns.startswith(p) for p in _SKIP_NS_PREFIX):
@@ -302,30 +345,41 @@ def collect_pvc_usage_via_du(
         phase = (pvc.status.phase if pvc.status else None) or ""
         if phase != "Bound":
             continue
-        candidates.append(pvc)
+        bound.append(pvc)
 
-    # Prefer larger requested capacity first (more interesting), then name
-    def _sort_key(p: Any) -> tuple:
-        req = None
-        try:
-            req = p.spec.resources.requests.get("storage") if p.spec and p.spec.resources else None
-        except Exception:  # noqa: BLE001
-            req = None
-        return (-(_parse_qty_bytes(str(req)) or 0), p.metadata.namespace or "", p.metadata.name or "")
-
-    candidates.sort(key=_sort_key)
-    candidates = candidates[:max_pvcs]
-
-    if not candidates:
+    if not bound:
         out["warnings"].append("no Bound PVCs to measure")
         return out
 
-    # Cap parallelism — kubectl exec is heavy; avoid blowing ops/context deadline
-    workers = max(1, min(workers, 3, len(candidates)))
+    namespaces = sorted({p.metadata.namespace for p in bound if p.metadata.namespace})
+    mounts = _build_mount_index(api, namespaces)
+    if not mounts:
+        out["warnings"].append("no Running pods mounting Bound PVCs")
+        return out
 
+    candidates = _pick_candidates(
+        bound, mounts, max_pvcs=max_pvcs, namespace=namespace
+    )
+    if not candidates:
+        out["warnings"].append("no mountable PVCs in selection")
+        return out
+
+    out["warnings"].append(
+        f"measuring {len(candidates)} PVC(s) across "
+        f"{len({p.metadata.namespace for p in candidates})} namespace(s)"
+    )
+
+    workers = max(1, min(workers, 3, len(candidates)))
     results: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futs = {pool.submit(_measure_one, api, pvc): pvc for pvc in candidates}
+        futs = {
+            pool.submit(
+                _measure_one,
+                pvc,
+                mounts[(pvc.metadata.namespace or "", pvc.metadata.name or "")],
+            ): pvc
+            for pvc in candidates
+        }
         for fut in as_completed(futs):
             try:
                 row = fut.result()
@@ -336,12 +390,15 @@ def collect_pvc_usage_via_du(
                 results.append(row)
 
     ok = [r for r in results if r.get("used_percent") is not None]
-    ok.sort(key=lambda r: (r.get("used_percent") or 0), reverse=True)
+    ok.sort(
+        key=lambda r: (r.get("used_percent") or 0, r.get("used_bytes") or 0),
+        reverse=True,
+    )
     failed = [r for r in results if r.get("used_percent") is None]
     out["pvc_usage"] = ok + failed
     if failed:
         out["warnings"].append(
-            f"{len(failed)}/{len(results)} PVC du incomplete (no mount or no du in image)"
+            f"{len(failed)}/{len(results)} PVC du incomplete (exec/du missing in image)"
         )
     if ok:
         out["warnings"].append(

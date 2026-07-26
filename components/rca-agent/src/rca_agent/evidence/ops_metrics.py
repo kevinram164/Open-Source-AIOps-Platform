@@ -370,8 +370,8 @@ async def collect_disk_metrics(
         du = await asyncio.to_thread(
             collect_pvc_usage_via_du,
             namespace=namespace,
-            # Cluster-wide: keep small so ops/context stays under deadline
-            max_pvcs=8 if namespace else 6,
+            # Cluster-wide: more samples, round-robin across namespaces inside collector
+            max_pvcs=12 if not namespace else 10,
             workers=3,
         )
         out["warnings"].extend(du.get("warnings") or [])
