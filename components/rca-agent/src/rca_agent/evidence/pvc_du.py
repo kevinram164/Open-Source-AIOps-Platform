@@ -113,33 +113,77 @@ def _du_bytes(
     pod: str,
     container: str,
     path: str,
-    timeout_s: int = 8,
+    timeout_s: int = 12,
 ) -> int | None:
-    cmd = [
-        "/bin/sh",
-        "-c",
-        f"du -sb {shlex.quote(path)} 2>/dev/null | awk '{{print $1}}'",
+    """Exec du in pod. Use websocket stream (_preload_content=False) — preload hits None.decode on OCP."""
+    import time
+
+    commands: list[list[str]] = [
+        ["du", "-sb", path],
+        ["/bin/sh", "-c", f"du -sb {shlex.quote(path)} 2>/dev/null | cut -f1"],
+        ["/bin/bash", "-c", f"du -sb {shlex.quote(path)} 2>/dev/null | cut -f1"],
     ]
-    try:
-        resp = stream(
-            api.connect_get_namespaced_pod_exec,
-            pod,
-            namespace,
-            command=cmd,
-            container=container,
-            stderr=True,
-            stdin=False,
-            stdout=True,
-            tty=False,
-            _request_timeout=timeout_s,
-        )
-        text = (resp or "").strip().splitlines()
-        if not text:
-            return None
-        return int(text[-1].strip())
-    except Exception as exc:  # noqa: BLE001
-        log.debug("pvc_du_exec_failed", ns=namespace, pod=pod, path=path, error=str(exc))
-        return None
+    last_err: str | None = None
+    for cmd in commands:
+        resp = None
+        try:
+            resp = stream(
+                api.connect_get_namespaced_pod_exec,
+                pod,
+                namespace,
+                command=cmd,
+                container=container,
+                stderr=True,
+                stdin=False,
+                stdout=True,
+                tty=False,
+                _preload_content=False,
+            )
+            stdout_parts: list[str] = []
+            deadline = time.time() + timeout_s
+            while getattr(resp, "is_open", lambda: False)() and time.time() < deadline:
+                resp.update(timeout=1)
+                if resp.peek_stdout():
+                    chunk = resp.read_stdout()
+                    if chunk:
+                        stdout_parts.append(chunk)
+                if resp.peek_stderr():
+                    _ = resp.read_stderr()
+            try:
+                if resp.peek_stdout():
+                    chunk = resp.read_stdout()
+                    if chunk:
+                        stdout_parts.append(chunk)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                resp.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+            text = "".join(stdout_parts).strip()
+            if not text:
+                last_err = "empty_stdout"
+                continue
+            first = text.splitlines()[-1].split()[0]
+            return int(first)
+        except Exception as exc:  # noqa: BLE001
+            last_err = f"{type(exc).__name__}: {exc}"
+            try:
+                if resp is not None:
+                    resp.close()
+            except Exception:  # noqa: BLE001
+                pass
+            continue
+
+    log.warning(
+        "pvc_du_exec_failed",
+        ns=namespace,
+        pod=pod,
+        path=path,
+        error=last_err,
+    )
+    return None
 
 
 def _measure_one(
