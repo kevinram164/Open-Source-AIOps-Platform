@@ -1,6 +1,7 @@
-"""Chat API schemas — investigator response."""
+"""Chat API schemas — Phase 6 session + follow-ups."""
 
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -16,6 +17,10 @@ class ChatRequest(BaseModel):
     incident_id: str | None = Field(
         default=None, description="UUID or external_id (INC-XXXXXXXX)"
     )
+    session_id: str | None = Field(
+        default=None,
+        description="Conversation id for multi-turn memory (auto-created if omitted)",
+    )
     auto_analyze: bool = Field(
         default=True,
         description="If true and no RCA yet, run RCA + NBA before answering",
@@ -23,6 +28,7 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    session_id: str | None = None
     intent: str | None = Field(
         default=None,
         description="investigate | ops_query | command_restart | general",
@@ -30,6 +36,7 @@ class ChatResponse(BaseModel):
     answer: str
     evidence: list[str] = Field(default_factory=list)
     recommendation: str | None = None
+    suggested_followups: list[str] = Field(default_factory=list)
     symptom: str | None = None
     symptom_confidence: float | None = None
     probable_root_cause: str | None = None
@@ -56,7 +63,6 @@ class ChatResponse(BaseModel):
                 return [ln.strip(" -•\t") for ln in text.splitlines() if ln.strip()]
             return [text]
         if isinstance(v, list):
-            # Repair accidental list("NodeUsage...") → chars
             if v and all(isinstance(x, str) and len(x) == 1 for x in v):
                 joined = "".join(v).strip()
                 return [joined] if joined else []
@@ -66,3 +72,14 @@ class ChatResponse(BaseModel):
                 if str(x).strip() and not (isinstance(x, str) and len(x) == 1)
             ]
         return [str(v)]
+
+    @field_validator("session_id", mode="before")
+    @classmethod
+    def _default_session(cls, v: Any) -> str | None:
+        if v is None or v == "":
+            return None
+        return str(v)
+
+
+def new_session_id() -> str:
+    return str(uuid4())

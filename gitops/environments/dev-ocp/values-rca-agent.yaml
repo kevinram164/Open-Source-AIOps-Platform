@@ -30,6 +30,11 @@ openai:
   existingSecret: openai-api-key
   secretKey: OPENAI_API_KEY
 
+llm:
+  provider: ollama
+  ollamaBaseUrl: "http://ollama.aiops-core.svc:11434"
+  ollamaModel: "qwen2.5:3b"
+
 route:
   enabled: true
   host: rca-agent-aiops-core.apps.ocp01.npd.co

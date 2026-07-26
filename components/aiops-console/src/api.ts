@@ -7,10 +7,12 @@ export type ImpactScope = {
 };
 
 export type ChatResponse = {
+  session_id?: string | null;
   intent?: string | null;
   answer: string;
   evidence: string[];
   recommendation: string | null;
+  suggested_followups?: string[];
   symptom?: string | null;
   symptom_confidence?: number | null;
   probable_root_cause: string | null;
@@ -76,6 +78,32 @@ export type Remediation = {
   created_at: string;
 };
 
+const SESSION_KEY = "aiops-chat-session-id";
+
+export function getChatSessionId(): string | undefined {
+  try {
+    return localStorage.getItem(SESSION_KEY) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function setChatSessionId(id: string) {
+  try {
+    localStorage.setItem(SESSION_KEY, id);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function resetChatSessionId() {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
@@ -85,13 +113,21 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 export async function askChat(question: string, namespace?: string): Promise<ChatResponse> {
-  return json(
+  const session_id = getChatSessionId();
+  const data = await json<ChatResponse>(
     await fetch("/api/v1/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, namespace: namespace || undefined, auto_analyze: true }),
+      body: JSON.stringify({
+        question,
+        namespace: namespace || undefined,
+        session_id,
+        auto_analyze: true,
+      }),
     }),
   );
+  if (data.session_id) setChatSessionId(data.session_id);
+  return data;
 }
 
 export async function listIncidents(): Promise<Incident[]> {

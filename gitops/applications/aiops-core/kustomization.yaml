@@ -5,6 +5,7 @@ kind: Kustomization
 resources:
   - vault-secrets.yaml
   - db-init.yaml
+  - ollama.yaml
   - incident-api.yaml
   - rca-agent.yaml
   - aiops-console.yaml

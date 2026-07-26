@@ -19,7 +19,16 @@ async def readiness(response: Response) -> dict[str, str]:
     """Readiness probe — dependencies available."""
     if not settings.is_ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        return {"status": "not_ready", "reason": "OPENAI_API_KEY not configured"}
+        provider = settings.llm_provider or "openai"
+        reason = (
+            "OLLAMA_BASE_URL not configured"
+            if provider.lower() == "ollama"
+            else "OPENAI_API_KEY not configured"
+        )
+        return {"status": "not_ready", "reason": reason, "llm_provider": provider}
 
-    # Phase 3: check Prometheus, PostgreSQL, Coroot connectivity
-    return {"status": "ready", "version": __version__}
+    return {
+        "status": "ready",
+        "version": __version__,
+        "llm_provider": settings.llm_provider,
+    }

@@ -172,20 +172,37 @@ def collect_ops_snapshot(
         for node in api.list_node().items:
             name = node.metadata.name
             ready = "Unknown"
+            disk_pressure = "Unknown"
+            memory_pressure = "Unknown"
+            pid_pressure = "Unknown"
             for cond in node.status.conditions or []:
                 if cond.type == "Ready":
                     ready = cond.status
+                elif cond.type == "DiskPressure":
+                    disk_pressure = cond.status
+                elif cond.type == "MemoryPressure":
+                    memory_pressure = cond.status
+                elif cond.type == "PIDPressure":
+                    pid_pressure = cond.status
             allocatable = node.status.allocatable or {}
             out["nodes"].append(
                 {
                     "name": name,
                     "ready": ready,
+                    "disk_pressure": disk_pressure,
+                    "memory_pressure": memory_pressure,
+                    "pid_pressure": pid_pressure,
                     "cpu_allocatable": allocatable.get("cpu"),
                     "memory_allocatable": allocatable.get("memory"),
+                    "ephemeral_storage_allocatable": allocatable.get("ephemeral-storage"),
                 }
             )
             if ready != "True":
                 out["warnings"].append(f"Node {name} Ready={ready}")
+            if disk_pressure == "True":
+                out["warnings"].append(f"Node {name} DiskPressure=True")
+            if memory_pressure == "True":
+                out["warnings"].append(f"Node {name} MemoryPressure=True")
     except Exception as exc:  # noqa: BLE001
         out["warnings"].append(f"list nodes failed: {exc}")
 

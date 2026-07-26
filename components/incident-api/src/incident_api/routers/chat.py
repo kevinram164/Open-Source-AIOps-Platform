@@ -1,4 +1,4 @@
-"""POST /api/v1/chat — AIOps conversational demo API."""
+"""POST /api/v1/chat — AIOps conversational demo API (Phase 6)."""
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +17,7 @@ async def chat(
 ) -> ChatResponse:
     """Ask a natural-language question; returns evidence-backed answer + NBA remediations.
 
-    Does **not** execute remediations — approve/execute via remediation-controller.
+    Pass ``session_id`` to keep multi-turn memory. Does **not** execute remediations.
     """
     result = await handle_chat(
         session,
@@ -25,5 +25,6 @@ async def chat(
         namespace=body.namespace,
         incident_ref=body.incident_id,
         auto_analyze=body.auto_analyze,
+        session_id=body.session_id,
     )
     return ChatResponse(**result)

@@ -65,12 +65,21 @@ spec:
                   optional: true
             - name: NBA_ENABLED
               value: {{ .Values.config.nbaEnabled | default true | quote }}
+            - name: LLM_PROVIDER
+              value: {{ .Values.llm.provider | default "openai" | quote }}
+            {{- if eq (.Values.llm.provider | default "openai") "ollama" }}
+            - name: OLLAMA_BASE_URL
+              value: {{ .Values.llm.ollamaBaseUrl | default "http://ollama.aiops-core.svc:11434" | quote }}
+            - name: OLLAMA_MODEL
+              value: {{ .Values.llm.ollamaModel | default "llama3.2:3b" | quote }}
+            {{- end }}
             {{- if .Values.openai.existingSecret }}
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.openai.existingSecret }}
                   key: {{ .Values.openai.secretKey }}
+                  optional: true
             - name: OPENAI_MODEL
               value: {{ .Values.openai.model | default "gpt-4o-mini" | quote }}
             {{- end }}

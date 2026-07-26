@@ -8,5 +8,6 @@ resources:
   - storage/
   - configmaps/
 
-# Secrets are applied manually — never commit real values.
-# See bootstrap/secrets/README.md
+# Secrets: bootstrap/secrets/README.md (manual)
+# Ollama: managed by Argo Application aiops-ollama → bootstrap/ollama
+# (do not also list ollama/ here — avoids double-sync with aiops-bootstrap)

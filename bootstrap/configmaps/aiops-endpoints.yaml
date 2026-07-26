@@ -27,6 +27,9 @@ data:
   # RCA Agent (Phase 3)
   RCA_AGENT_URL: "http://rca-agent.aiops-core.svc:8080"
 
+  # Local LLM (optional — see docs/ollama.md)
+  OLLAMA_URL: "http://ollama.aiops-core.svc:11434"
+
   # Remediation Controller (Phase 4) — NBA drafts
   REMEDIATION_CONTROLLER_URL: "http://remediation-controller.aiops-automation.svc:8080"
 

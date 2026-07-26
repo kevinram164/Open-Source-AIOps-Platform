@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 
-import httpx
 import structlog
 
 from rca_agent.config import settings
@@ -83,60 +82,48 @@ def _impact_from_req(req: AnalyzeRequest, evidence: list[str]) -> ImpactScope:
 
 
 async def synthesize_rca(req: AnalyzeRequest, evidence: list[str]) -> RcaOutput:
-    if not settings.openai_api_key:
-        return _fallback(req, evidence, "OPENAI_API_KEY missing")
+    from rca_agent.llm_client import chat_completions, llm_configured, model_name
 
+    if not llm_configured():
+        return _fallback(req, evidence, f"LLM not configured (provider={settings.llm_provider})")
+
+    # Keep evidence bounded for local models
+    evidence_for_llm = evidence[:25]
     user_content = {
         "incident": req.model_dump(),
-        "evidence": evidence,
-    }
-    payload = {
-        "model": settings.openai_model,
-        "temperature": 0.2,
-        "max_tokens": settings.openai_max_tokens,
-        "messages": [
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": json.dumps(user_content, default=str)},
-        ],
+        "evidence": evidence_for_llm,
     }
     try:
-        async with httpx.AsyncClient(timeout=float(settings.rca_request_timeout_seconds)) as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.openai_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-            if resp.status_code >= 400:
-                log.error("openai_http_error", status=resp.status_code, body=resp.text[:500])
-                return _fallback(req, evidence, f"OpenAI HTTP {resp.status_code}")
-            content = resp.json()["choices"][0]["message"]["content"]
-            data = _parse_json(content)
-            data.setdefault("incident_id", req.external_id or req.incident_id)
-            data.setdefault("affected_namespace", req.namespace)
-            data.setdefault("affected_service", req.workload)
-            data.setdefault("error_subtype", _infer_subtype(evidence))
-            if "root_cause_confidence" not in data and "confidence" in data:
-                data["root_cause_confidence"] = data["confidence"]
-            if "symptom_confidence" not in data:
-                data["symptom_confidence"] = min(0.95, float(data.get("confidence") or 0.5) + 0.1)
-            if not data.get("symptom"):
-                data["symptom"] = _symptom_from_evidence(evidence)
-            if not data.get("impact_scope"):
-                data["impact_scope"] = _impact_from_req(req, evidence).model_dump()
-            # overall confidence
-            sc = data.get("symptom_confidence")
-            rc = data.get("root_cause_confidence")
-            if sc is not None and rc is not None:
-                data["confidence"] = round((float(sc) + float(rc)) / 2, 3)
-            out = RcaOutput.model_validate(data)
-            out.model = settings.openai_model
-            out.suggested_actions = _sanitize_suggestions(out)
-            return out
+        content, used_model = await chat_completions(
+            messages=[
+                {"role": "system", "content": _SYSTEM},
+                {"role": "user", "content": json.dumps(user_content, default=str)},
+            ],
+            temperature=0.2,
+        )
+        data = _parse_json(content)
+        data.setdefault("incident_id", req.external_id or req.incident_id)
+        data.setdefault("affected_namespace", req.namespace)
+        data.setdefault("affected_service", req.workload)
+        data.setdefault("error_subtype", _infer_subtype(evidence))
+        if "root_cause_confidence" not in data and "confidence" in data:
+            data["root_cause_confidence"] = data["confidence"]
+        if "symptom_confidence" not in data:
+            data["symptom_confidence"] = min(0.95, float(data.get("confidence") or 0.5) + 0.1)
+        if not data.get("symptom"):
+            data["symptom"] = _symptom_from_evidence(evidence)
+        if not data.get("impact_scope"):
+            data["impact_scope"] = _impact_from_req(req, evidence).model_dump()
+        sc = data.get("symptom_confidence")
+        rc = data.get("root_cause_confidence")
+        if sc is not None and rc is not None:
+            data["confidence"] = round((float(sc) + float(rc)) / 2, 3)
+        out = RcaOutput.model_validate(data)
+        out.model = used_model or model_name()
+        out.suggested_actions = _sanitize_suggestions(out)
+        return out
     except Exception as exc:  # noqa: BLE001
-        log.error("openai_rca_failed", error=str(exc))
+        log.error("llm_rca_failed", error=str(exc), provider=settings.llm_provider)
         return _fallback(req, evidence, str(exc))
 
 

@@ -18,8 +18,12 @@ class Settings(BaseSettings):
         "http://remediation-controller.aiops-automation.svc:8080"
     )
     nba_enabled: bool = True
+    llm_provider: str = "openai"
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    ollama_base_url: str = "http://ollama.aiops-core.svc:11434"
+    ollama_model: str = "qwen2.5:3b"
+    ollama_timeout_seconds: int = 180
     api_token: str = ""
     correlation_time_window_seconds: int = 300
     correlation_max_alerts_per_incident: int = 50

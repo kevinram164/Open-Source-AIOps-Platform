@@ -1,42 +1,49 @@
-# AIOps Chat — general platform ops assistant
+# AIOps Chat — Phase 6 platform ops assistant
 
-Ask **many different** day-2 questions. The backend does **not** route each question
-to a hardcoded topic handler. Instead:
-
-1. Gather one **platform context pack** (metrics, nodes, failures, inventory, recent incidents)
-2. Let the LLM answer **that exact question** from the pack
-3. Only special-case: restart command → pending remediation; clear “why down” → RCA
+Day-2 ops Q&A over a **platform context pack** + optional multi-turn **session memory**.  
+Commands like restart create **pending** remediations — never silent auto-run.
 
 ## Endpoint
 
 `POST /api/v1/chat`
 
-Examples that should all work after deploy (same code path):
+```bash
+# First turn (creates session_id)
+curl -skS -X POST https://incident-api-aiops-core.apps.ocp01.npd.co/api/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Pods nào đang cao tải nhất?"}' | jq '{session_id,answer,suggested_followups}'
 
-- Pods nào đang cao tải nhất?
-- Node nào Ready=False?
-- Deployment nào trong npd-banking chưa ready?
-- Có CrashLoopBackOff không?
-- Có điều gì đáng lưu ý không?
-- Incident nào đang open?
-- Why is Payment Service down?  *(investigate + RCA)*
-- restart transfer-service in npd-banking  *(pending remediation)*
-
-## Architecture
-
-```
-question
-   ├─ command_restart  → create pending remediation
-   ├─ investigate      → bind incident + RCA (+ NBA)
-   └─ ops_query (default)
-         → RCA POST /api/v1/ops/context   # multi-facet pack
-         → + recent incidents from DB
-         → OpenAI selects relevant facts → answer
+# Follow-up (pass session_id)
+curl -skS -X POST https://incident-api-aiops-core.apps.ocp01.npd.co/api/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Còn pod nào nữa?","session_id":"<from-previous>"}' | jq
 ```
 
-No per-topic if/else for every new question type. Extending capability =
-enriching the context pack (new collectors), not adding chat branches.
+## Phase 6 capabilities
 
-## Console
+| Item | Behavior |
+|------|----------|
+| Context pack | metrics, failures, inventory, **Warning events, PVC not Bound, HPA at max** |
+| Evidence normalize | never char-by-char list |
+| `session_id` | last ~10 turns in Postgres `chat_turns` |
+| `suggested_followups` | rule-based next questions |
+| Audit | every user/assistant turn stored |
+| LLM | `LLM_PROVIDER=ollama` → `qwen2.5:3b` (or openai) |
 
-https://aiops-console-aiops-core.apps.ocp01.npd.co
+## Intent model
+
+| Intent | When |
+|--------|------|
+| `ops_query` | **Default** |
+| `investigate` | why / down / RCA |
+| `command_restart` | restart … |
+
+## Deploy notes
+
+```bash
+oc apply -f bootstrap/rbac/rca-agent-monitoring-view.yaml
+oc apply -f bootstrap/configmaps/aiops-platform-config.yaml
+# rebuild incident-api + rca-agent + aiops-console
+```
+
+See also: [ollama.md](ollama.md) · [roadmap.md](roadmap.md)

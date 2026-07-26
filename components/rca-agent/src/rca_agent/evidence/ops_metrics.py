@@ -254,6 +254,70 @@ async def collect_prom_top_pods(
     return out
 
 
+async def collect_disk_metrics(
+    *,
+    namespace: str | None = None,
+    top_n: int = 10,
+) -> dict[str, Any]:
+    """Node root filesystem % used + PVC volume usage % (Prometheus)."""
+    out: dict[str, Any] = {
+        "source": "prometheus",
+        "node_filesystem": [],
+        "pvc_usage": [],
+        "warnings": [],
+    }
+    # Prefer instance/node labels as exposed by node-exporter on OCP
+    node_q = (
+        f"topk({top_n}, "
+        '100 * (1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay|nsfs"}'
+        ' / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay|nsfs"})))'
+    )
+    if namespace:
+        pvc_q = (
+            f"topk({top_n}, "
+            f'100 * (kubelet_volume_stats_used_bytes{{namespace="{namespace}"}}'
+            f' / kubelet_volume_stats_capacity_bytes{{namespace="{namespace}"}}))'
+        )
+    else:
+        pvc_q = (
+            f"topk({top_n}, "
+            "100 * (kubelet_volume_stats_used_bytes"
+            " / kubelet_volume_stats_capacity_bytes))"
+        )
+
+    node_rows = await query_prometheus(node_q)
+    pvc_rows = await query_prometheus(pvc_q)
+
+    for series in node_rows:
+        m = series.get("metric") or {}
+        val = float((series.get("value") or [0, 0])[1])
+        node = m.get("instance") or m.get("node") or m.get("nodename") or "unknown"
+        out["node_filesystem"].append(
+            {
+                "node": node,
+                "mountpoint": m.get("mountpoint") or "/",
+                "used_percent": round(val, 1),
+            }
+        )
+
+    for series in pvc_rows:
+        m = series.get("metric") or {}
+        val = float((series.get("value") or [0, 0])[1])
+        out["pvc_usage"].append(
+            {
+                "namespace": m.get("namespace"),
+                "persistentvolumeclaim": m.get("persistentvolumeclaim") or m.get("pvc"),
+                "used_percent": round(val, 1),
+            }
+        )
+
+    if not node_rows and not pvc_rows:
+        out["warnings"].append(
+            "Prometheus disk queries empty — need cluster-monitoring-view + node-exporter metrics"
+        )
+    return out
+
+
 def collect_workload_inventory(namespace: str | None = None) -> dict[str, Any]:
     """Deployments / StatefulSets summary for ops Q&A."""
     out: dict[str, Any] = {"deployments": [], "statefulsets": [], "warnings": []}

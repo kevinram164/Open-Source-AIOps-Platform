@@ -13,9 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_api.analyze import run_analyze
+from incident_api.chat_memory import load_session_history, save_turn, suggest_followups
 from incident_api.config import settings
 from incident_api.models import Incident, RcaResult
 from incident_api.nba import create_pending_remediations
+from incident_api.schemas_chat import new_session_id
 
 log = structlog.get_logger()
 
@@ -365,14 +367,41 @@ async def synthesize_with_openai(
     remediations: list[dict[str, Any]],
     ops_payload: dict[str, Any] | None = None,
     recent_incidents: list[dict[str, Any]] | None = None,
+    conversation_history: list[dict[str, str]] | None = None,
 ) -> tuple[str, list[str], str, str] | None:
-    if not settings.openai_api_key:
+    from incident_api.llm_client import chat_completions, llm_configured
+
+    if not llm_configured():
         return None
+
+    # Shrink context for local models
+    if ops_payload and (settings.llm_provider or "").lower() == "ollama":
+        facts = ops_payload.get("facts") or {}
+        ops_payload = {
+            "summary": ops_payload.get("summary"),
+            "evidence": (ops_payload.get("evidence") or [])[:20],
+            "warnings": ops_payload.get("warnings"),
+            "facts": {
+                "metrics_source": facts.get("metrics_source"),
+                "top_cpu_pods": (facts.get("top_cpu_pods") or [])[:8],
+                "top_memory_pods": (facts.get("top_memory_pods") or [])[:5],
+                "node_usage": (facts.get("node_usage") or [])[:8],
+                "crashloop_pods": (facts.get("crashloop_pods") or [])[:8],
+                "imagepull_pods": (facts.get("imagepull_pods") or [])[:5],
+                "recent_warnings": (facts.get("recent_warnings") or [])[:6],
+                "pvc_issues": (facts.get("pvc_issues") or [])[:5],
+                "hpas": [h for h in (facts.get("hpas") or []) if h.get("at_max")][:5],
+                "inventory": {
+                    "deployments": ((facts.get("inventory") or {}).get("deployments") or [])[:10],
+                },
+            },
+        }
 
     context: dict[str, Any] = {
         "question": question,
         "pending_remediations": remediations,
-        "recent_incidents": recent_incidents or [],
+        "recent_incidents": (recent_incidents or [])[:5],
+        "conversation_history": (conversation_history or [])[-8:],
     }
     if ops_payload:
         context["platform_context"] = {
@@ -390,7 +419,7 @@ async def synthesize_with_openai(
             "confidence": rca.get("confidence"),
             "error_subtype": rca.get("error_subtype"),
             "impact_scope": rca.get("impact_scope"),
-            "supporting_evidence": rca.get("supporting_evidence"),
+            "supporting_evidence": (rca.get("supporting_evidence") or [])[:12],
             "recommended_actions": rca.get("recommended_actions"),
             "suggested_actions": rca.get("suggested_actions"),
             "affected_service": rca.get("affected_service"),
@@ -408,59 +437,49 @@ async def synthesize_with_openai(
     system = (
         "You are a general OpenShift platform operations assistant. "
         "The operator may ask ANY day-2 question (CPU, memory, nodes, deployments, "
-        "CrashLoop, ImagePull, incidents, capacity, what is noteworthy, etc.). "
-        "Use platform_context + recent_incidents + rca (if present). "
+        "CrashLoop, ImagePull, PVC, HPA, incidents, capacity, what is noteworthy, etc.). "
+        "Use platform_context + recent_incidents + rca + conversation_history. "
+        "If the user refers to prior turns (e.g. 'còn pod nào nữa?'), use conversation_history. "
         "Answer ONLY the asked question — pick the relevant facts; "
         "do not dump unrelated sections. "
         "If the needed fact is missing, say what is missing — do not invent. "
-        "Return ONLY valid JSON: answer, evidence (short strings copied/adapted from context), "
+        "Return ONLY valid JSON: answer, evidence (array of short strings), "
         "recommendation. Remediations require human approve. "
         "Keep under 280 words. Match the question language."
     )
-    payload = {
-        "model": settings.openai_model,
-        "temperature": 0.2,
-        "max_tokens": 900,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": json.dumps(context, default=str)},
-        ],
-    }
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.openai_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-            if resp.status_code >= 400:
-                log.error("chat_openai_http", status=resp.status_code, body=resp.text[:300])
-                return None
-            content = resp.json()["choices"][0]["message"]["content"].strip()
-            if content.startswith("```"):
-                content = re.sub(r"^```(?:json)?\s*", "", content)
-                content = re.sub(r"\s*```$", "", content)
-            data = json.loads(content)
-            return (
-                str(data.get("answer") or ""),
-                _as_str_list(data.get("evidence")),
-                str(data.get("recommendation") or ""),
-                settings.openai_model,
-            )
+        content, used_model = await chat_completions(
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": json.dumps(context, default=str)},
+            ],
+            temperature=0.2,
+            max_tokens=900,
+        )
+        content = content.strip()
+        if content.startswith("```"):
+            content = re.sub(r"^```(?:json)?\s*", "", content)
+            content = re.sub(r"\s*```$", "", content)
+        data = json.loads(content)
+        return (
+            str(data.get("answer") or ""),
+            _as_str_list(data.get("evidence")),
+            str(data.get("recommendation") or ""),
+            used_model,
+        )
     except Exception as exc:  # noqa: BLE001
-        log.error("chat_openai_failed", error=str(exc))
+        log.error("chat_llm_failed", error=str(exc), provider=settings.llm_provider)
         return None
 
 
 def _empty_response(answer: str, intent: str, **extra: Any) -> dict[str, Any]:
     base = {
+        "session_id": None,
         "intent": intent,
         "answer": answer,
         "evidence": [],
         "recommendation": None,
+        "suggested_followups": [],
         "symptom": None,
         "symptom_confidence": None,
         "probable_root_cause": None,
@@ -476,6 +495,56 @@ def _empty_response(answer: str, intent: str, **extra: Any) -> dict[str, Any]:
     }
     base.update(extra)
     return base
+
+
+async def _finalize_chat(
+    session: AsyncSession,
+    *,
+    session_id: str,
+    question: str,
+    namespace: str | None,
+    result: dict[str, Any],
+    ops: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    intent = result.get("intent") or "ops_query"
+    followups = result.get("suggested_followups") or suggest_followups(
+        intent=intent,
+        question=question,
+        namespace=namespace,
+        ops=ops,
+        incident=result.get("incident") if isinstance(result.get("incident"), dict) else None,
+    )
+    result["session_id"] = session_id
+    result["suggested_followups"] = followups
+    result["evidence"] = _as_str_list(result.get("evidence"))
+
+    try:
+        await save_turn(
+            session,
+            session_id=session_id,
+            role="user",
+            content=question,
+            namespace=namespace,
+            intent=intent,
+        )
+        await save_turn(
+            session,
+            session_id=session_id,
+            role="assistant",
+            content=str(result.get("answer") or ""),
+            namespace=namespace,
+            intent=intent,
+            model=result.get("model"),
+            meta={
+                "evidence": (result.get("evidence") or [])[:15],
+                "recommendation": result.get("recommendation"),
+                "followups": followups,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("chat_audit_save_failed", error=str(exc))
+
+    return result
 
 
 async def _handle_restart_command(
@@ -566,11 +635,17 @@ async def handle_chat(
     namespace: str | None,
     incident_ref: str | None,
     auto_analyze: bool,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
+    sid = session_id or new_session_id()
+    history = await load_session_history(session, sid, limit=10) if session_id else []
     intent = detect_intent(question)
 
     if intent == "command_restart":
-        return await _handle_restart_command(session, question=question, namespace=namespace)
+        result = await _handle_restart_command(session, question=question, namespace=namespace)
+        return await _finalize_chat(
+            session, session_id=sid, question=question, namespace=namespace, result=result
+        )
 
     if intent == "ops_query":
         hint_ns, _ = _hints_from_question(question)
@@ -586,13 +661,14 @@ async def handle_chat(
             remediations=[],
             ops_payload=ops,
             recent_incidents=incidents_brief,
+            conversation_history=history,
         )
         model = "template"
         if synthesized:
             answer, evidence, recommendation, model = synthesized
         facts = ops.get("facts") or {}
         summary = ops.get("summary") or {}
-        return _empty_response(
+        result = _empty_response(
             answer,
             "ops_query",
             evidence=evidence,
@@ -610,13 +686,20 @@ async def handle_chat(
             },
             model=model,
         )
+        return await _finalize_chat(
+            session,
+            session_id=sid,
+            question=question,
+            namespace=ns,
+            result=result,
+            ops=ops,
+        )
 
     # investigate — bind to incident / RCA
     incident = await resolve_incident(
         session, question=question, namespace=namespace, incident_ref=incident_ref
     )
     if not incident:
-        # Still answer from platform context (many questions ≠ one incident)
         ops = await fetch_ops_context(question, namespace=namespace)
         incidents_brief = await recent_incidents_brief(session, namespace=namespace)
         answer, evidence, recommendation = _ops_fallback_brief(question, ops)
@@ -627,17 +710,26 @@ async def handle_chat(
             remediations=[],
             ops_payload=ops,
             recent_incidents=incidents_brief,
+            conversation_history=history,
         )
         model = "template"
         if synthesized:
             answer, evidence, recommendation, model = synthesized
-        return _empty_response(
+        result = _empty_response(
             answer,
             "ops_query",
             evidence=evidence,
             recommendation=recommendation,
             ops_snapshot={"mode": "platform_context", "summary": ops.get("summary")},
             model=model,
+        )
+        return await _finalize_chat(
+            session,
+            session_id=sid,
+            question=question,
+            namespace=namespace,
+            result=result,
+            ops=ops,
         )
 
     rca = await latest_rca(session, incident.id)
@@ -658,7 +750,11 @@ async def handle_chat(
     remediations = await list_remediations_for_incident(incident.external_id)
 
     synthesized = await synthesize_with_openai(
-        question=question, incident=incident, rca=rca, remediations=remediations
+        question=question,
+        incident=incident,
+        rca=rca,
+        remediations=remediations,
+        conversation_history=history,
     )
     if synthesized:
         answer, evidence, recommendation, model = synthesized
@@ -678,11 +774,12 @@ async def handle_chat(
             "blast_radius": "service" if incident.workload else "namespace",
         }
 
-    return {
+    result = {
         "intent": intent,
         "answer": answer,
         "evidence": evidence,
         "recommendation": recommendation,
+        "suggested_followups": [],
         "symptom": rca.get("symptom"),
         "symptom_confidence": rca.get("symptom_confidence"),
         "probable_root_cause": rca.get("probable_root_cause"),
@@ -703,3 +800,10 @@ async def handle_chat(
         "ops_snapshot": None,
         "model": model,
     }
+    return await _finalize_chat(
+        session,
+        session_id=sid,
+        question=question,
+        namespace=namespace or incident.namespace,
+        result=result,
+    )

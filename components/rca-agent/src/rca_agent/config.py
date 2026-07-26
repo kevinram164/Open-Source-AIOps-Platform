@@ -22,10 +22,14 @@ class Settings(BaseSettings):
     postgresql_port: int = 5432
     postgresql_database: str = "aiops"
 
-    # OpenAI (from Secret)
+    # LLM provider: openai | ollama
+    llm_provider: str = "openai"
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     openai_max_tokens: int = 4096
+    ollama_base_url: str = "http://ollama.aiops-core.svc:11434"
+    ollama_model: str = "qwen2.5:3b"
+    ollama_timeout_seconds: int = 180
     rca_request_timeout_seconds: int = 120
 
     # Platform
@@ -34,7 +38,9 @@ class Settings(BaseSettings):
 
     @property
     def is_ready(self) -> bool:
-        """Readiness requires OpenAI key; other deps checked in Phase 3."""
+        provider = (self.llm_provider or "openai").lower()
+        if provider == "ollama":
+            return bool(self.ollama_base_url)
         return bool(self.openai_api_key)
 
 

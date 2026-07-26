@@ -1,10 +1,10 @@
 import { FormEvent, useState } from "react";
-import { askChat, ChatResponse } from "./api";
+import { askChat, ChatResponse, resetChatSessionId } from "./api";
 
 const SUGGESTIONS = [
   "Pods nào đang cao tải nhất?",
-  "Node nào đang dùng nhiều CPU?",
-  "Deployment nào trong npd-banking?",
+  "Node nào đang đầy disk?",
+  "PVC nào dùng trên 80%?",
   "Có pod nào CrashLoopBackOff không?",
   "Why is Payment Service down?",
 ];
@@ -18,12 +18,12 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ChatResponse | null>(null);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function runAsk(q: string) {
     setLoading(true);
     setError(null);
+    setQuestion(q);
     try {
-      const data = await askChat(question, namespace.trim() || undefined);
+      const data = await askChat(q, namespace.trim() || undefined);
       setResult(data);
       onRemediationsChanged?.();
     } catch (err) {
@@ -31,6 +31,17 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    await runAsk(question);
+  }
+
+  function onNewChat() {
+    resetChatSessionId();
+    setResult(null);
+    setError(null);
   }
 
   const confidencePct =
@@ -41,14 +52,15 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
     result?.root_cause_confidence != null
       ? Math.round(result.root_cause_confidence * 100)
       : null;
+  const followups = result?.suggested_followups?.filter(Boolean) || [];
 
   return (
     <div className="panel">
-      <div className="hero-kicker">Ops assistant</div>
+      <div className="hero-kicker">Ops assistant · Phase 6</div>
       <h1>Ask the platform</h1>
       <p className="lead">
-        Hỏi bất kỳ thông tin vận hành: CPU/memory, node, deployment, lỗi pod, RCA, restart.
-        Không chỉ xoay quanh một incident — trả lời đúng câu bạn hỏi.
+        Multi-turn ops Q&amp;A. Context pack (metrics, failures, events, PVC, HPA) + session memory.
+        Restart tạo pending remediation — không tự chạy.
       </p>
 
       <div className="ask-shell">
@@ -62,9 +74,13 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
                 setQuestion(s);
                 const low = s.toLowerCase();
                 if (low.includes("movie")) setNamespace("npd-movie");
-                else if (low.includes("payment") || low.includes("npd-banking") || low.includes("banking"))
+                else if (
+                  low.includes("payment") ||
+                  low.includes("npd-banking") ||
+                  low.includes("banking")
+                )
                   setNamespace("npd-banking");
-                else setNamespace(""); // cluster-wide ops by default
+                else setNamespace("");
               }}
             >
               {s}
@@ -77,7 +93,7 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
             rows={3}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Hỏi gì cũng được: CPU, node, deployment, CrashLoop, restart…"
+            placeholder="Hỏi gì cũng được: CPU, node, deployment, CrashLoop, PVC, HPA, restart…"
             required
           />
           <div className="row">
@@ -90,6 +106,9 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
                 placeholder="npd-banking hoặc để trống"
               />
             </div>
+            <button type="button" className="btn" onClick={onNewChat} disabled={loading}>
+              New chat
+            </button>
             <button
               className="btn btn-primary"
               type="submit"
@@ -121,6 +140,11 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
                 {result.intent && <span className="badge">{result.intent}</span>}
                 {result.ops_snapshot?.mode && (
                   <span className="badge ok">{result.ops_snapshot.mode}</span>
+                )}
+                {result.session_id && (
+                  <span className="badge" title={result.session_id}>
+                    session
+                  </span>
                 )}
                 {result.error_subtype && (
                   <span className="badge warn">{result.error_subtype}</span>
@@ -204,6 +228,27 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
               <strong>Recommendation</strong>
               <div>{result.recommendation}</div>
             </div>
+          )}
+
+          {followups.length > 0 && (
+            <>
+              <div className="section-title" style={{ marginTop: "1.25rem" }}>
+                Ask next
+              </div>
+              <div className="chips">
+                {followups.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="chip"
+                    disabled={loading}
+                    onClick={() => void runAsk(s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
 
           {result.remediations?.length > 0 && (

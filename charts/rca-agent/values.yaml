@@ -59,6 +59,12 @@ openai:
   existingSecret: openai-api-key
   secretKey: OPENAI_API_KEY
 
+llm:
+  # openai | ollama — platform ConfigMap LLM_PROVIDER can override via envFrom
+  provider: ollama
+  ollamaBaseUrl: "http://ollama.aiops-core.svc:11434"
+  ollamaModel: "qwen2.5:3b"
+
 probes:
   liveness:
     path: /health/live

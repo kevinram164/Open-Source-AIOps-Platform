@@ -49,19 +49,20 @@ flowchart LR
 
 ---
 
-## Phase 6 — Ops Assistant mature *(làm ngay)*
+## Phase 6 — Ops Assistant mature *(code done — deploy to activate)*
 
 **Mục tiêu:** Hỏi nhiều câu về hệ thống đang vận hành, trả lời đúng, ổn định.
 
-| # | Deliverable | Done khi |
-|---|-------------|----------|
-| 6.1 | Deploy ổn định `ops/context` + chat normalize evidence | Ask không còn evidence từng ký tự |
-| 6.2 | Context pack: Prometheus auth (`cluster-monitoring-view`) | Top CPU/mem tin cậy |
-| 6.3 | Conversation memory (session_id, 5–10 turn) | “còn pod nào nữa?” hiểu ngữ cảnh |
-| 6.4 | Suggest next questions trong Console | UX trợ lý, không chỉ one-shot |
-| 6.5 | Audit mọi chat Q&A vào Postgres | Demo + troubleshooting |
+| # | Deliverable | Status |
+|---|-------------|--------|
+| 6.1 | `ops/context` + evidence normalize | Done |
+| 6.2 | Prometheus auth RBAC + richer pack (events/PVC/HPA/**disk**) | Done |
+| 6.2b | Ollama via Argo (`aiops-ollama`) + Job pull `qwen2.5:3b` | Done |
+| 6.3 | Conversation memory (`session_id`, ~10 turns) | Done |
+| 6.4 | Suggest next questions in Console | Done |
+| 6.5 | Audit chat turns → Postgres `chat_turns` | Done |
 
-**Demo script:** CPU → CrashLoop → deployment ready → restart pending → approve.
+**Deploy:** rebuild `rca-agent`, `incident-api`, `aiops-console`; apply monitoring-view + platform ConfigMap; `ollama pull qwen2.5:3b`.
 
 **Không làm ở phase này:** Slack, topology graph, ML anomaly.
 
@@ -162,7 +163,7 @@ Cập nhật bảng dưới mỗi khi merge phase:
 | Milestone | Target date | Status | Core % | Full % |
 |-----------|-------------|--------|--------|--------|
 | Baseline (Phase 5+) | — | Done | ~40% | ~20% |
-| Phase 6 | TBD | Planned | ~50% | ~25% |
+| Phase 6 | — | **Implemented (code)** | ~50% | ~25% |
 | Phase 7 | TBD | Planned | ~60% | ~35% |
 | Phase 8 | TBD | Planned | ~70% | ~45% |
 | Phase 9 | TBD | Planned | ~75% | ~55% |
@@ -172,5 +173,5 @@ Cập nhật bảng dưới mỗi khi merge phase:
 
 ## Liên kết
 
-- [architecture.md](architecture.md) · [chat.md](chat.md) · [runbooks.md](runbooks.md) · [demo-scenarios.md](demo-scenarios.md)  
+- [architecture.md](architecture.md) · [chat.md](chat.md) · [runbooks.md](runbooks.md) · [demo-scenarios.md](demo-scenarios.md) · [ollama.md](ollama.md)  
 - CP4AIOps overview: https://www.ibm.com/products/cloud-pak-for-aiops

@@ -41,11 +41,32 @@ spec:
           env:
             - name: LOG_LEVEL
               value: {{ .Values.config.logLevel | quote }}
+            {{- if and .Values.openai.existingSecret (ne (.Values.llm.provider | default "openai") "ollama") }}
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.openai.existingSecret }}
                   key: {{ .Values.openai.secretKey }}
+            {{- else if .Values.openai.existingSecret }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.openai.existingSecret }}
+                  key: {{ .Values.openai.secretKey }}
+                  optional: true
+            {{- end }}
+            {{- if .Values.llm.provider }}
+            - name: LLM_PROVIDER
+              value: {{ .Values.llm.provider | quote }}
+            {{- end }}
+            {{- if .Values.llm.ollamaBaseUrl }}
+            - name: OLLAMA_BASE_URL
+              value: {{ .Values.llm.ollamaBaseUrl | quote }}
+            {{- end }}
+            {{- if .Values.llm.ollamaModel }}
+            - name: OLLAMA_MODEL
+              value: {{ .Values.llm.ollamaModel | quote }}
+            {{- end }}
           {{- if .Values.config.useExistingConfigMap }}
           envFrom:
             - configMapRef:

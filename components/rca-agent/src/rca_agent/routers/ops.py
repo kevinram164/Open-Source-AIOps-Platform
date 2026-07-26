@@ -8,7 +8,13 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from rca_agent.evidence.k8s import collect_ops_snapshot, resolve_deployment_for_pod
+from rca_agent.evidence.ops_extra import (
+    collect_hpa_status,
+    collect_pvc_issues,
+    collect_recent_warnings,
+)
 from rca_agent.evidence.ops_metrics import (
+    collect_disk_metrics,
     collect_node_metrics,
     collect_pod_metrics,
     collect_prom_top_pods,
@@ -65,9 +71,29 @@ async def build_platform_context(namespace: str | None = None) -> dict[str, Any]
     metrics_source = "prometheus" if prom.get("top_cpu_pods") else "metrics.k8s.io"
     node_usage = node_m.get("nodes") or []
 
+    disk = await collect_disk_metrics(namespace=namespace)
+    warnings.extend(disk.get("warnings") or [])
+    node_fs = disk.get("node_filesystem") or []
+    pvc_usage = disk.get("pvc_usage") or []
+    nodes_disk_pressure = [
+        n for n in nodes_ready if n.get("disk_pressure") == "True"
+    ]
+
     # Inventory
     inv = collect_workload_inventory(namespace)
     warnings.extend(inv.get("warnings") or [])
+
+    # Phase 6 enrich: events / PVC / HPA
+    ev = collect_recent_warnings(namespace=namespace)
+    pvc = collect_pvc_issues(namespace=namespace)
+    hpa = collect_hpa_status(namespace=namespace)
+    warnings.extend(ev.get("warnings") or [])
+    warnings.extend(pvc.get("warnings") or [])
+    warnings.extend(hpa.get("warnings") or [])
+    recent_events = ev.get("events") or []
+    pvc_issues = pvc.get("pvcs") or []
+    hpas = hpa.get("hpas") or []
+    hpas_at_max = [h for h in hpas if h.get("at_max")]
 
     # Compact evidence lines (LLM + template fallback)
     for p in top_cpu[:8]:
@@ -94,6 +120,32 @@ async def build_platform_context(namespace: str | None = None) -> dict[str, Any]
         evidence.append(f"OOM {p.get('namespace')}/{p.get('name')}")
     for d in (inv.get("deployments") or [])[:12]:
         evidence.append(f"Deploy {d.get('namespace')}/{d.get('name')} ready={d.get('ready')}")
+    for e in recent_events[:8]:
+        evidence.append(
+            f"Event Warning {e.get('namespace')}/{e.get('object')} "
+            f"{e.get('reason')}: {e.get('message')}"
+        )
+    for p in pvc_issues[:5]:
+        evidence.append(
+            f"PVC {p.get('namespace')}/{p.get('name')} phase={p.get('phase')} "
+            f"sc={p.get('storage_class')}"
+        )
+    for h in hpas_at_max[:5]:
+        evidence.append(
+            f"HPA {h.get('namespace')}/{h.get('name')} at max "
+            f"({h.get('desired')}/{h.get('max')}) target={h.get('target')}"
+        )
+    for n in nodes_disk_pressure[:8]:
+        evidence.append(f"NodeDiskPressure {n.get('name')}: DiskPressure=True")
+    for n in node_fs[:8]:
+        evidence.append(
+            f"NodeFS {n.get('node')} {n.get('mountpoint')}: used={n.get('used_percent')}%"
+        )
+    for p in pvc_usage[:8]:
+        evidence.append(
+            f"PVCUsage {p.get('namespace')}/{p.get('persistentvolumeclaim')}: "
+            f"used={p.get('used_percent')}%"
+        )
 
     summary = {
         "scope": namespace or "cluster (non-system namespaces)",
@@ -105,8 +157,26 @@ async def build_platform_context(namespace: str | None = None) -> dict[str, Any]
             "not_ready_pods": len(not_ready),
             "deployments": len(inv.get("deployments") or []),
             "nodes": len(nodes_ready) or len(node_usage),
+            "warning_events": len(recent_events),
+            "pvc_not_bound": len(pvc_issues),
+            "hpa_at_max": len(hpas_at_max),
+            "nodes_disk_pressure": len(nodes_disk_pressure),
+            "node_fs_hot": len([x for x in node_fs if (x.get("used_percent") or 0) >= 80]),
+            "pvc_hot": len([x for x in pvc_usage if (x.get("used_percent") or 0) >= 80]),
         },
-        "highlights": _highlights(top_cpu, crash, imagepull, nodes_ready, node_usage),
+        "highlights": _highlights(
+            top_cpu,
+            crash,
+            imagepull,
+            nodes_ready,
+            node_usage,
+            recent_events=recent_events,
+            pvc_issues=pvc_issues,
+            hpas_at_max=hpas_at_max,
+            node_fs=node_fs,
+            pvc_usage=pvc_usage,
+            nodes_disk_pressure=nodes_disk_pressure,
+        ),
     }
 
     return {
@@ -126,8 +196,16 @@ async def build_platform_context(namespace: str | None = None) -> dict[str, Any]
                 "deployments": (inv.get("deployments") or [])[:30],
                 "statefulsets": (inv.get("statefulsets") or [])[:15],
             },
+            "recent_warnings": recent_events[:15],
+            "pvc_issues": pvc_issues[:15],
+            "hpas": hpas[:20],
+            "disk": {
+                "node_filesystem": node_fs[:15],
+                "pvc_usage": pvc_usage[:15],
+                "nodes_disk_pressure": nodes_disk_pressure[:10],
+            },
         },
-        "evidence": evidence[:50],
+        "evidence": evidence[:55],
         "warnings": warnings,
     }
 
@@ -138,6 +216,13 @@ def _highlights(
     imagepull: list,
     nodes_ready: list,
     node_usage: list,
+    *,
+    recent_events: list | None = None,
+    pvc_issues: list | None = None,
+    hpas_at_max: list | None = None,
+    node_fs: list | None = None,
+    pvc_usage: list | None = None,
+    nodes_disk_pressure: list | None = None,
 ) -> list[str]:
     notes: list[str] = []
     if top_cpu:
@@ -153,6 +238,25 @@ def _highlights(
     for n in nodes_ready:
         if n.get("ready") != "True":
             notes.append(f"Node {n.get('name')} Ready={n.get('ready')}")
+    if nodes_disk_pressure:
+        notes.append(f"{len(nodes_disk_pressure)} node(s) DiskPressure=True")
+    hot_fs = [x for x in (node_fs or []) if (x.get("used_percent") or 0) >= 80]
+    if hot_fs:
+        n0 = hot_fs[0]
+        notes.append(f"Node FS hot: {n0.get('node')} {n0.get('used_percent')}%")
+    hot_pvc = [x for x in (pvc_usage or []) if (x.get("used_percent") or 0) >= 80]
+    if hot_pvc:
+        p0 = hot_pvc[0]
+        notes.append(
+            f"PVC hot: {p0.get('namespace')}/{p0.get('persistentvolumeclaim')} "
+            f"{p0.get('used_percent')}%"
+        )
+    if recent_events:
+        notes.append(f"{len(recent_events)} recent Warning event(s)")
+    if pvc_issues:
+        notes.append(f"{len(pvc_issues)} PVC not Bound")
+    if hpas_at_max:
+        notes.append(f"{len(hpas_at_max)} HPA at max replicas")
     if not notes:
         notes.append("No strong anomalies in scanned scope.")
     return notes
