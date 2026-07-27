@@ -19,6 +19,7 @@ Mục tiêu: nâng lab từ **~20% full-product / ~40% core AIOps loop** lên m�
 | Policy observe vs remediate | Mode B |
 | Grafana + AIOps Console (Ask) | Phase 5 + chat |
 | Platform context pack (metrics, failures, inventory) | Ops assistant |
+| App OTLP → Coroot + Instana (shared collector) | Same pattern as banking; see [docs/tracing.md](tracing.md) |
 
 **Ước lượng:** ~35–45% core loop · ~15–25% full CP4AIOps.
 

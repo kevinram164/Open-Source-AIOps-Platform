@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from remediation_controller import __version__
 from remediation_controller.config import settings
 from remediation_controller.db import init_db
+from remediation_controller.observability import instrument_fastapi
 from remediation_controller.routers import health, remediations
 
 
@@ -24,6 +25,7 @@ def create_app() -> FastAPI:
         version=__version__,
         lifespan=lifespan,
     )
+    instrument_fastapi(app, "remediation-controller")
     app.include_router(health.router, tags=["health"])
     app.include_router(remediations.router, tags=["remediations"])
 

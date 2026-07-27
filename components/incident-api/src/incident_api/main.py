@@ -12,6 +12,7 @@ from incident_api.config import settings
 from incident_api.db import init_db
 from incident_api.logging import setup_logging
 from incident_api.models import ChatTurn, Incident, RcaResult  # noqa: F401 — register ORM
+from incident_api.observability import instrument_fastapi
 from incident_api.routers import alerts, chat, health, incidents
 
 log = structlog.get_logger()
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
         version=__version__,
         lifespan=lifespan,
     )
+    instrument_fastapi(app, "incident-api")
     app.include_router(health.router, tags=["health"])
     app.include_router(incidents.router, tags=["incidents"])
     app.include_router(alerts.router, tags=["alerts"])

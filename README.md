@@ -46,7 +46,7 @@ OpenShift Applications
                               GitOps Pull Request
 ```
 
-Chi tiết: [docs/architecture.md](docs/architecture.md) | [docs/high-level-design.md](docs/high-level-design.md) | [docs/roadmap.md](docs/roadmap.md) | [diagrams/](diagrams/)
+Chi tiết: [docs/architecture.md](docs/architecture.md) | [docs/high-level-design.md](docs/high-level-design.md) | [docs/roadmap.md](docs/roadmap.md) | [docs/tracing.md](docs/tracing.md) | [diagrams/](diagrams/)
 
 ## Hạ tầng yêu cầu
 

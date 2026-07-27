@@ -48,6 +48,14 @@ config:
   correlationMaxAlertsPerIncident: 50
   nbaEnabled: true
 
+# OTLP → shared collector (Coroot + Instana). Empty endpoint disables tracing.
+otel:
+  enabled: true
+  endpoint: "http://opentelemetry-collector.observability.svc.cluster.local:4317"
+  protocol: "grpc"
+  serviceName: "incident-api"
+  resourceAttributes: "deployment.environment=dev-ocp,k8s.namespace.name=aiops-core,k8s.cluster.name=ocp01"
+
 openai:
   existingSecret: ""
   secretKey: OPENAI_API_KEY

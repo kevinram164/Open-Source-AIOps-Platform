@@ -67,6 +67,16 @@ spec:
             - name: OLLAMA_MODEL
               value: {{ .Values.llm.ollamaModel | quote }}
             {{- end }}
+            {{- if and .Values.otel.enabled .Values.otel.endpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: {{ .Values.otel.protocol | default "grpc" | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.otel.serviceName | default "rca-agent" | quote }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ .Values.otel.resourceAttributes | quote }}
+            {{- end }}
           {{- if .Values.config.useExistingConfigMap }}
           envFrom:
             - configMapRef:
