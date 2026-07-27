@@ -15,7 +15,9 @@ RUN groupadd -r aiops && useradd -r -g aiops -d /app -s /sbin/nologin aiops \
     && chown -R aiops:aiops /app /tmp
 WORKDIR /app
 COPY --from=builder /wheels /wheels
-RUN pip install --no-cache-dir /wheels/*.whl && rm -rf /wheels
+RUN pip install --no-cache-dir /wheels/*.whl \
+    && pip install --no-cache-dir --force-reinstall "setuptools==75.8.2" \
+    && rm -rf /wheels
 USER aiops
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PORT=8080
 EXPOSE 8080

@@ -19,6 +19,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi==0.48b0",
     "opentelemetry-instrumentation-httpx==0.48b0",
     "opentelemetry-instrumentation-sqlalchemy==0.48b0",
+    "setuptools==75.8.2",
 ]
 
 [build-system]

@@ -9,6 +9,7 @@
    - Gate on `OTEL_EXPORTER_OTLP_ENDPOINT`
    - OTLP gRPC exporter + FastAPI / httpx / SQLAlchemy / Redis as needed
    - Messaging consumers: `SpanKind.CONSUMER` (Instana maps these to services)
+   - Add **`setuptools==75.8.2`** (provides `pkg_resources`) — OTEL instrumentation 0.48 needs it; do **not** use setuptools≥82 (removed `pkg_resources`)
 2. **Helm / GitOps env** (per service):
    - `OTEL_EXPORTER_OTLP_ENDPOINT=http://opentelemetry-collector.observability.svc.cluster.local:4317`
    - `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`

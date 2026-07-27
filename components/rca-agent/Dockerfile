@@ -39,6 +39,7 @@ WORKDIR /app
 
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir /wheels/*.whl \
+    && pip install --no-cache-dir --force-reinstall "setuptools==75.8.2" \
     && rm -rf /wheels
 
 USER aiops

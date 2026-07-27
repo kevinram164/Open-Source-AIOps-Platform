@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import os
+import sys
+
+
+def _log(msg: str) -> None:
+    print(f"[otel] {msg}", file=sys.stderr, flush=True)
 
 
 def init_tracing(service_name: str) -> None:
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
     if not endpoint:
+        _log("disabled: OTEL_EXPORTER_OTLP_ENDPOINT empty")
         return
     try:
         from opentelemetry import trace
@@ -25,10 +31,12 @@ def init_tracing(service_name: str) -> None:
             from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 
             HTTPXClientInstrumentor().instrument()
-        except Exception:
-            pass
-    except Exception:
-        pass
+        except Exception as exc:  # noqa: BLE001
+            _log(f"httpx instrument skip: {exc}")
+
+        _log(f"tracing enabled service={name} endpoint={endpoint}")
+    except Exception as exc:  # noqa: BLE001
+        _log(f"init FAILED: {exc}")
 
 
 def instrument_fastapi(app, service_name: str) -> None:
@@ -37,5 +45,6 @@ def instrument_fastapi(app, service_name: str) -> None:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
         FastAPIInstrumentor.instrument_app(app)
-    except Exception:
-        pass
+        _log(f"fastapi instrumented service={service_name}")
+    except Exception as exc:  # noqa: BLE001
+        _log(f"fastapi instrument FAILED: {exc}")
