@@ -8,7 +8,14 @@ import re
 import structlog
 
 from rca_agent.config import settings
-from rca_agent.schemas.rca_output import AnalyzeRequest, ImpactScope, RcaOutput, SuggestedAction
+from rca_agent.schemas.rca_output import (
+    AnalyzeRequest,
+    ImpactScope,
+    RcaOutput,
+    SuggestedAction,
+    TopologyNeighbor,
+)
+from rca_agent.topology.graph import get_topology
 
 log = structlog.get_logger()
 
@@ -22,9 +29,11 @@ confidence (0-1 overall; use average of symptom/root_cause confidences if unsure
 error_subtype (one of: ImagePullBackOff, ErrImagePull, CrashLoopBackOff, OOMKilled,
   NodeNotReady, NodePressure, ProbeFailure, ConfigError, Unknown),
 impact_scope (object: namespaces[], workloads[], pods[], nodes[], blast_radius
-  one of service|namespace|cluster|unknown),
+  one of service|namespace|cluster|unknown; include upstream/downstream neighbor
+  names from topology evidence when present),
 supporting_evidence (array of strings — quote waiting.message / event messages when present),
-business_impact, recommended_actions (array of strings),
+business_impact (mention upstream callers / downstream deps when Topo lines exist),
+recommended_actions (array of strings),
 suggested_actions (array of objects: action, namespace, target, parameters, reason),
 automation_available (bool), automation_requires_approval (bool, usually true),
 recommended_runbook (string or null).
@@ -65,33 +74,79 @@ def _infer_subtype(evidence: list[str]) -> str:
     return "Unknown"
 
 
-def _impact_from_req(req: AnalyzeRequest, evidence: list[str]) -> ImpactScope:
+def _neighbors(topo: dict | None, key: str) -> list[TopologyNeighbor]:
+    out: list[TopologyNeighbor] = []
+    for n in (topo or {}).get(key) or []:
+        out.append(
+            TopologyNeighbor(
+                namespace=n.get("namespace"),
+                name=n.get("name"),
+                id=n.get("id"),
+                hops=n.get("hops"),
+                kind=n.get("kind"),
+            )
+        )
+    return out
+
+
+def _impact_from_req(
+    req: AnalyzeRequest,
+    evidence: list[str],
+    topology: dict | None = None,
+) -> ImpactScope:
     pods: list[str] = []
     for line in evidence:
         if line.startswith("Pod "):
             name = line.split(":", 1)[0].replace("Pod ", "").strip()
             if name:
                 pods.append(name)
+    topo = topology or get_topology(req.namespace, req.workload, hops=2)
+    upstream = _neighbors(topo, "upstream")
+    downstream = _neighbors(topo, "downstream")
+    workloads = [req.workload] if req.workload else []
+    for n in upstream + downstream:
+        if n.name and n.name not in workloads:
+            workloads.append(n.name)
+    namespaces = [req.namespace] if req.namespace else []
+    for n in upstream + downstream:
+        if n.namespace and n.namespace not in namespaces:
+            namespaces.append(n.namespace)
+    if upstream or downstream:
+        blast = "namespace" if len(namespaces) == 1 else "cluster"
+        if not upstream and len(downstream) <= 2 and len(namespaces) == 1:
+            blast = "service"
+    else:
+        blast = "service" if req.workload else ("namespace" if req.namespace else "unknown")
     return ImpactScope(
-        namespaces=[req.namespace] if req.namespace else [],
-        workloads=[req.workload] if req.workload else [],
+        namespaces=namespaces,
+        workloads=workloads[:20],
         pods=pods[:10],
         nodes=[],
-        blast_radius="service" if req.workload else ("namespace" if req.namespace else "unknown"),
+        blast_radius=blast,
+        upstream=upstream,
+        downstream=downstream,
+        topology_source=(topo or {}).get("source"),
     )
 
 
-async def synthesize_rca(req: AnalyzeRequest, evidence: list[str]) -> RcaOutput:
+async def synthesize_rca(
+    req: AnalyzeRequest,
+    evidence: list[str],
+    topology: dict | None = None,
+) -> RcaOutput:
     from rca_agent.llm_client import chat_completions, llm_configured, model_name
 
     if not llm_configured():
-        return _fallback(req, evidence, f"LLM not configured (provider={settings.llm_provider})")
+        return _fallback(
+            req, evidence, f"LLM not configured (provider={settings.llm_provider})", topology
+        )
 
     # Keep evidence bounded for local models
     evidence_for_llm = evidence[:25]
     user_content = {
         "incident": req.model_dump(),
         "evidence": evidence_for_llm,
+        "topology": topology or get_topology(req.namespace, req.workload, hops=2),
     }
     try:
         content, used_model = await chat_completions(
@@ -112,8 +167,19 @@ async def synthesize_rca(req: AnalyzeRequest, evidence: list[str]) -> RcaOutput:
             data["symptom_confidence"] = min(0.95, float(data.get("confidence") or 0.5) + 0.1)
         if not data.get("symptom"):
             data["symptom"] = _symptom_from_evidence(evidence)
+        enriched = _impact_from_req(req, evidence, topology)
         if not data.get("impact_scope"):
-            data["impact_scope"] = _impact_from_req(req, evidence).model_dump()
+            data["impact_scope"] = enriched.model_dump()
+        else:
+            # Prefer structured hop neighbors from topology over LLM guesses
+            scope = data["impact_scope"] if isinstance(data["impact_scope"], dict) else {}
+            scope.setdefault("upstream", [n.model_dump() for n in enriched.upstream])
+            scope.setdefault("downstream", [n.model_dump() for n in enriched.downstream])
+            scope.setdefault("topology_source", enriched.topology_source)
+            if enriched.workloads:
+                merged_wl = list(dict.fromkeys([*(scope.get("workloads") or []), *enriched.workloads]))
+                scope["workloads"] = merged_wl[:20]
+            data["impact_scope"] = scope
         sc = data.get("symptom_confidence")
         rc = data.get("root_cause_confidence")
         if sc is not None and rc is not None:
@@ -124,7 +190,7 @@ async def synthesize_rca(req: AnalyzeRequest, evidence: list[str]) -> RcaOutput:
         return out
     except Exception as exc:  # noqa: BLE001
         log.error("llm_rca_failed", error=str(exc), provider=settings.llm_provider)
-        return _fallback(req, evidence, str(exc))
+        return _fallback(req, evidence, str(exc), topology)
 
 
 def _parse_json(text: str) -> dict:
@@ -171,7 +237,29 @@ def _sanitize_suggestions(out: RcaOutput) -> list[SuggestedAction]:
     return cleaned[:3]
 
 
-def _fallback(req: AnalyzeRequest, evidence: list[str], reason: str) -> RcaOutput:
+def _business_impact_from_topo(topology: dict | None) -> str:
+    if not topology:
+        return "Unknown — manual review required"
+    up = topology.get("upstream") or []
+    down = topology.get("downstream") or []
+    if not up and not down:
+        return "Unknown — manual review required"
+    parts = []
+    if up:
+        names = ", ".join(f"{n.get('name')}" for n in up[:4] if n.get("name"))
+        parts.append(f"upstream callers may be affected: {names}")
+    if down:
+        names = ", ".join(f"{n.get('name')}" for n in down[:4] if n.get("name"))
+        parts.append(f"downstream deps: {names}")
+    return "; ".join(parts)
+
+
+def _fallback(
+    req: AnalyzeRequest,
+    evidence: list[str],
+    reason: str,
+    topology: dict | None = None,
+) -> RcaOutput:
     subtype = _infer_subtype(evidence)
     symptom = _symptom_from_evidence(evidence)
     cause = "Insufficient automated analysis"
@@ -235,9 +323,9 @@ def _fallback(req: AnalyzeRequest, evidence: list[str], reason: str) -> RcaOutpu
         root_cause_confidence=root_c,
         confidence=round((symptom_c + root_c) / 2, 3),
         error_subtype=subtype,
-        impact_scope=_impact_from_req(req, evidence),
+        impact_scope=_impact_from_req(req, evidence, topology),
         supporting_evidence=evidence[:20] or [reason],
-        business_impact="Unknown — manual review required",
+        business_impact=_business_impact_from_topo(topology),
         recommended_actions=_fallback_recommendations(subtype),
         suggested_actions=suggested,
         automation_available=bool(suggested),

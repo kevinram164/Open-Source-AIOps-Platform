@@ -8,6 +8,7 @@ from rca_agent.evidence.k8s import collect_k8s_evidence
 from rca_agent.evidence.observability import collect_coroot_evidence, collect_prometheus_evidence
 from rca_agent.openai_rca import synthesize_rca
 from rca_agent.schemas.rca_output import AnalyzeRequest, RcaOutput
+from rca_agent.topology.graph import get_topology_async, topology_evidence_lines
 
 router = APIRouter(prefix="/api/v1")
 
@@ -19,7 +20,9 @@ async def analyze(req: AnalyzeRequest) -> RcaOutput:
     evidence: list[str] = []
     evidence.extend(collect_k8s_evidence(req.namespace, req.workload))
     evidence.extend(await collect_prometheus_evidence(req.namespace))
-    evidence.extend(await collect_coroot_evidence(req.namespace))
+    evidence.extend(await collect_coroot_evidence(req.namespace, req.workload))
+    topo = await get_topology_async(req.namespace, req.workload, hops=2)
+    evidence.extend(topology_evidence_lines(topo))
     for alert in req.raw_alerts[:10]:
         labels = alert.get("labels") or {}
         ann = alert.get("annotations") or {}
@@ -27,7 +30,7 @@ async def analyze(req: AnalyzeRequest) -> RcaOutput:
             f"Alert {labels.get('alertname')}: {ann.get('summary') or ann.get('description') or labels}"
         )
 
-    result = await synthesize_rca(req, evidence)
+    result = await synthesize_rca(req, evidence, topology=topo)
     key = req.external_id or req.incident_id
     _STORE[key] = result
     _STORE[req.incident_id] = result

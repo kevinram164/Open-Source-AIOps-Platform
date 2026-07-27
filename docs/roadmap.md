@@ -73,15 +73,17 @@ flowchart LR
 
 **Mục tiêu:** Correlate / RCA theo **quan hệ dịch vụ**, gần CP4 topology path (lite).
 
-| # | Deliverable | Nguồn |
+| # | Deliverable | Status |
 |---|-------------|--------|
-| 7.1 | Service dependency graph từ Coroot API (hoặc K8s Service/Endpoints) | Coroot / K8s |
-| 7.2 | Incident blast radius = upstream/downstream 1–2 hop | RCA + chat |
-| 7.3 | Correlation: cùng topology path → 1 incident | Incident API |
-| 7.4 | Console: mini topology view cho incident | React |
-| 7.5 | Enrich RCA prompt bằng neighbor services | RCA agent |
+| 7.1 | Service dependency graph (Coroot live map + static fallback) | **Done (7B)** — prefer `overview/map` / AppMap |
+| 7.2 | Incident blast radius = upstream/downstream 1–2 hop | **Done** — `ImpactScope.upstream/downstream` |
+| 7.3 | Correlation: cùng topology path → 1 incident | **Done** — fingerprint **or** related workloads |
+| 7.4 | Console: mini topology view cho incident | **Done** — Incidents click → blast radius panel |
+| 7.5 | Enrich RCA prompt bằng neighbor services | **Done** — Topo evidence + topology JSON in LLM |
 
 **Demo:** Fault `transfer-service` → incident cũng nêu `frontend` / `account-service` bị ảnh hưởng.
+
+**Docs:** [topology.md](topology.md)
 
 **% sau phase:** core ~60% · full ~35%.
 
@@ -165,7 +167,7 @@ Cập nhật bảng dưới mỗi khi merge phase:
 |-----------|-------------|--------|--------|--------|
 | Baseline (Phase 5+) | — | Done | ~40% | ~20% |
 | Phase 6 | — | **Implemented (code)** | ~50% | ~25% |
-| Phase 7 | TBD | Planned | ~60% | ~35% |
+| Phase 7 | — | **Implemented (code)** | ~60% | ~35% |
 | Phase 8 | TBD | Planned | ~70% | ~45% |
 | Phase 9 | TBD | Planned | ~75% | ~55% |
 | Phase 10 | TBD | Planned | ~80% | ~55–60% |
@@ -174,5 +176,5 @@ Cập nhật bảng dưới mỗi khi merge phase:
 
 ## Liên kết
 
-- [architecture.md](architecture.md) · [chat.md](chat.md) · [runbooks.md](runbooks.md) · [demo-scenarios.md](demo-scenarios.md) · [ollama.md](ollama.md)  
+- [architecture.md](architecture.md) · [chat.md](chat.md) · [topology.md](topology.md) · [runbooks.md](runbooks.md) · [demo-scenarios.md](demo-scenarios.md) · [ollama.md](ollama.md)  
 - CP4AIOps overview: https://www.ibm.com/products/cloud-pak-for-aiops

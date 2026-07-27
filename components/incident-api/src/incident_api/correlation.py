@@ -1,8 +1,9 @@
-"""Alert → incident correlation."""
+"""Alert → incident correlation (fingerprint + topology path)."""
 
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import httpx
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,6 +48,39 @@ def _workload(alert: dict) -> str | None:
     return None
 
 
+async def _topology_related(
+    ns_a: str | None,
+    wl_a: str | None,
+    ns_b: str | None,
+    wl_b: str | None,
+) -> bool:
+    if not settings.correlation_topology_enabled:
+        return False
+    if not wl_a or not wl_b:
+        return False
+    if ns_a == ns_b and wl_a == wl_b:
+        return True
+    url = settings.rca_agent_url.rstrip("/") + "/api/v1/topology/related"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(
+                url,
+                json={
+                    "namespace_a": ns_a,
+                    "workload_a": wl_a,
+                    "namespace_b": ns_b,
+                    "workload_b": wl_b,
+                    "hops": 2,
+                },
+            )
+            if resp.status_code != 200:
+                return False
+            return bool(resp.json().get("related"))
+    except Exception as exc:  # noqa: BLE001
+        log.debug("topology_related_failed", error=str(exc))
+        return False
+
+
 async def ingest_alertmanager_payload(session: AsyncSession, payload: dict) -> Incident:
     """Group alerts into an open incident within the correlation window."""
     alerts = payload.get("alerts") or []
@@ -57,6 +91,7 @@ async def ingest_alertmanager_payload(session: AsyncSession, payload: dict) -> I
     primary = alerts[0]
     labels = {**(payload.get("commonLabels") or {}), **(primary.get("labels") or {})}
     namespace = labels.get("namespace")
+    workload = _workload(primary)
     title = (
         (payload.get("commonAnnotations") or {}).get("summary")
         or (primary.get("annotations") or {}).get("summary")
@@ -66,7 +101,7 @@ async def ingest_alertmanager_payload(session: AsyncSession, payload: dict) -> I
     severity = _severity_from_alert(primary)
     window_start = datetime.now(UTC) - timedelta(seconds=settings.correlation_time_window_seconds)
 
-    # Find open incident sharing any fingerprint in window
+    # Find open incident sharing any fingerprint OR topology path in window
     result = await session.execute(
         select(Incident)
         .where(Incident.status == IncidentStatus.open)
@@ -75,7 +110,16 @@ async def ingest_alertmanager_payload(session: AsyncSession, payload: dict) -> I
     )
     for existing in result.scalars().all():
         existing_fps = set(existing.alert_fingerprints or [])
-        if existing_fps.intersection(fingerprints):
+        same_fp = bool(existing_fps.intersection(fingerprints))
+        same_topo = False
+        if not same_fp and workload and existing.workload:
+            same_topo = await _topology_related(
+                namespace,
+                workload,
+                existing.namespace,
+                existing.workload,
+            )
+        if same_fp or same_topo:
             merged = list(dict.fromkeys([*(existing.alert_fingerprints or []), *fingerprints]))
             if len(merged) > settings.correlation_max_alerts_per_incident:
                 merged = merged[: settings.correlation_max_alerts_per_incident]
@@ -84,9 +128,19 @@ async def ingest_alertmanager_payload(session: AsyncSession, payload: dict) -> I
             existing.updated_at = datetime.now(UTC)
             if _severity_rank(severity) > _severity_rank(existing.severity):
                 existing.severity = severity
+            # Enrich title hint when topology-merged
+            if same_topo and not same_fp and workload and existing.workload != workload:
+                hint = f" (+{workload})"
+                if hint not in (existing.title or "") and len(existing.title or "") < 450:
+                    existing.title = f"{existing.title}{hint}"
             await session.commit()
             await session.refresh(existing)
-            log.info("incident_correlated", external_id=existing.external_id, fingerprints=merged)
+            log.info(
+                "incident_correlated",
+                external_id=existing.external_id,
+                fingerprints=merged,
+                via="fingerprint" if same_fp else "topology",
+            )
             return existing
 
     seq = uuid4().hex[:8].upper()
@@ -96,7 +150,7 @@ async def ingest_alertmanager_payload(session: AsyncSession, payload: dict) -> I
         status=IncidentStatus.open,
         severity=severity,
         namespace=namespace,
-        workload=_workload(primary),
+        workload=workload,
         alert_fingerprints=fingerprints,
         labels=labels,
         raw_alerts=alerts,

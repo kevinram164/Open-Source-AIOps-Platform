@@ -20,6 +20,12 @@ data:
   COROOT_URL: "http://coroot-coroot.observability.svc:8080"
   # COROOT_URL: "https://coroot-observability.apps.ocp01.npd.co"
   COROOT_NAMESPACE: "observability"
+  # Phase 7B — live topology (set project id from Coroot URL: /p/<id>/...)
+  COROOT_TOPOLOGY_ENABLED: "true"
+  COROOT_PROJECT_ID: ""
+  # Optional if Coroot requires login (anonymous labs leave blank)
+  # COROOT_EMAIL: "admin@example.com"
+  # COROOT_PASSWORD: "change-me"
 
   # Incident API (internal)
   INCIDENT_API_URL: "http://incident-api.aiops-core.svc:8080"

@@ -38,17 +38,38 @@ async def collect_prometheus_evidence(namespace: str | None) -> list[str]:
     return lines
 
 
-async def collect_coroot_evidence(namespace: str | None) -> list[str]:
+async def collect_coroot_evidence(
+    namespace: str | None,
+    workload: str | None = None,
+) -> list[str]:
     lines: list[str] = []
     if not settings.coroot_url or not namespace:
         return lines
-    # Coroot CE API varies by version — health ping only for Phase 3 skeleton
     try:
+        from rca_agent.topology.coroot_client import CorootClient
+
+        topo = await CorootClient().fetch_topology(namespace, workload, hops=1)
+        if topo and topo.get("source", "").startswith("coroot"):
+            up = len(topo.get("upstream") or [])
+            down = len(topo.get("downstream") or [])
+            via = (topo.get("coroot") or {}).get("via") or "api"
+            lines.append(
+                f"Coroot topology via={via} for {namespace}/{workload or '*'}: "
+                f"upstream={up} downstream={down}"
+            )
+            return lines
+    except Exception as exc:  # noqa: BLE001
+        log.debug("coroot_topo_evidence_failed", error=str(exc))
+    # Reachability fallback
+    try:
+        import httpx
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(settings.coroot_url.rstrip("/") + "/")
+            target = f"{namespace}/{workload}" if workload else namespace
             lines.append(
-                f"Coroot reachable ({resp.status_code}) for namespace hint={namespace}; "
-                "detailed topology enrichment TBD"
+                f"Coroot reachable ({resp.status_code}) for {target}; "
+                "topology map unavailable — using static adjacency if any"
             )
     except Exception as exc:  # noqa: BLE001
         log.warning("coroot_evidence_failed", error=str(exc))

@@ -10,7 +10,7 @@ from rca_agent import __version__
 from rca_agent.config import settings
 from rca_agent.logging import setup_logging
 from rca_agent.observability import instrument_fastapi
-from rca_agent.routers import analyze, health, metrics, ops
+from rca_agent.routers import analyze, health, metrics, ops, topology
 
 
 @asynccontextmanager
@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics.router, tags=["metrics"])
     app.include_router(analyze.router, tags=["analyze"])
     app.include_router(ops.router, tags=["ops"])
+    app.include_router(topology.router, tags=["topology"])
     app.mount("/metrics", make_asgi_app())
 
     @app.get("/")

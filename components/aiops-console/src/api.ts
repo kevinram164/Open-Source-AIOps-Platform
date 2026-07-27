@@ -1,9 +1,34 @@
+export type TopologyNeighbor = {
+  namespace?: string | null;
+  name?: string | null;
+  id?: string | null;
+  hops?: number | null;
+  kind?: string | null;
+};
+
 export type ImpactScope = {
   namespaces?: string[];
   workloads?: string[];
   pods?: string[];
   nodes?: string[];
   blast_radius?: string | null;
+  upstream?: TopologyNeighbor[];
+  downstream?: TopologyNeighbor[];
+  topology_source?: string | null;
+};
+
+export type IncidentTopology = {
+  center?: { namespace?: string; name?: string; id?: string };
+  upstream?: TopologyNeighbor[];
+  downstream?: TopologyNeighbor[];
+  edges?: { from: string; to: string; kind?: string }[];
+  source?: string;
+  incident?: {
+    id: string;
+    external_id: string;
+    namespace: string | null;
+    workload: string | null;
+  };
 };
 
 export type ChatResponse = {
@@ -132,6 +157,10 @@ export async function askChat(question: string, namespace?: string): Promise<Cha
 
 export async function listIncidents(): Promise<Incident[]> {
   return json(await fetch("/api/v1/incidents?limit=50"));
+}
+
+export async function getIncidentTopology(id: string): Promise<IncidentTopology> {
+  return json(await fetch(`/api/v1/incidents/${id}/topology?hops=2`));
 }
 
 export async function listRemediations(): Promise<Remediation[]> {

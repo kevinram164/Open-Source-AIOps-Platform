@@ -1,10 +1,43 @@
 import { useCallback, useEffect, useState } from "react";
-import { Incident, listIncidents } from "./api";
+import { Incident, IncidentTopology, getIncidentTopology, listIncidents } from "./api";
+
+function NeighborList({
+  title,
+  items,
+}: {
+  title: string;
+  items: { namespace?: string | null; name?: string | null; hops?: number | null; kind?: string | null }[];
+}) {
+  if (!items.length) return null;
+  return (
+    <div className="topo-col">
+      <div className="topo-col-title">{title}</div>
+      <ul className="topo-list">
+        {items.map((n) => (
+          <li key={`${n.namespace}/${n.name}`}>
+            <span className="topo-name">
+              {n.namespace ? `${n.namespace}/` : ""}
+              {n.name}
+            </span>
+            <span className="topo-meta">
+              {n.hops != null ? `${n.hops}h` : ""}
+              {n.kind ? ` · ${n.kind}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function IncidentsPanel() {
   const [items, setItems] = useState<Incident[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Incident | null>(null);
+  const [topo, setTopo] = useState<IncidentTopology | null>(null);
+  const [topoError, setTopoError] = useState<string | null>(null);
+  const [topoLoading, setTopoLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -21,6 +54,20 @@ export function IncidentsPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const openIncident = useCallback(async (inc: Incident) => {
+    setSelected(inc);
+    setTopo(null);
+    setTopoError(null);
+    setTopoLoading(true);
+    try {
+      setTopo(await getIncidentTopology(inc.id));
+    } catch (err) {
+      setTopoError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTopoLoading(false);
+    }
+  }, []);
 
   return (
     <div className="panel">
@@ -49,7 +96,11 @@ export function IncidentsPanel() {
             </thead>
             <tbody>
               {items.map((i) => (
-                <tr key={i.id}>
+                <tr
+                  key={i.id}
+                  className={selected?.id === i.id ? "row-selected" : "row-clickable"}
+                  onClick={() => void openIncident(i)}
+                >
                   <td>{i.external_id}</td>
                   <td>{i.title}</td>
                   <td>
@@ -67,6 +118,47 @@ export function IncidentsPanel() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {selected && (
+        <div className="topo-panel" aria-live="polite">
+          <div className="topo-header">
+            <div>
+              <div className="hero-kicker">Blast radius</div>
+              <h2>
+                {selected.external_id}
+                {selected.workload ? ` · ${selected.workload}` : ""}
+              </h2>
+              <p className="muted">
+                Upstream / downstream neighbors (static adjacency + Coroot probe).
+              </p>
+            </div>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelected(null)}>
+              Close
+            </button>
+          </div>
+          {topoLoading && <p className="loading">Loading topology…</p>}
+          {topoError && <p className="error">{topoError}</p>}
+          {topo && !topoLoading && (
+            <>
+              <div className="topo-center">
+                <span className="topo-center-label">Center</span>
+                <span className="topo-center-id">
+                  {(topo.center?.namespace ? `${topo.center.namespace}/` : "") +
+                    (topo.center?.name || selected.workload || "—")}
+                </span>
+                <span className="badge">{topo.source || "unknown"}</span>
+              </div>
+              <div className="topo-grid">
+                <NeighborList title="Upstream" items={topo.upstream || []} />
+                <NeighborList title="Downstream" items={topo.downstream || []} />
+              </div>
+              {!topo.upstream?.length && !topo.downstream?.length && (
+                <p className="muted">No neighbors in static graph for this workload.</p>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

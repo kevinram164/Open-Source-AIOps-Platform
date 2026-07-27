@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     api_token: str = ""
     correlation_time_window_seconds: int = 300
     correlation_max_alerts_per_incident: int = 50
+    correlation_topology_enabled: bool = True
 
     platform_environment: str = "dev-ocp"
     platform_cluster_name: str = "ocp01"

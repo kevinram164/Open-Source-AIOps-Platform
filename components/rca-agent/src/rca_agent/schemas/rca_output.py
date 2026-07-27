@@ -25,6 +25,14 @@ class SuggestedAction(BaseModel):
     reason: str | None = None
 
 
+class TopologyNeighbor(BaseModel):
+    namespace: str | None = None
+    name: str | None = None
+    id: str | None = None
+    hops: int | None = None
+    kind: str | None = None
+
+
 class ImpactScope(BaseModel):
     namespaces: list[str] = Field(default_factory=list)
     workloads: list[str] = Field(default_factory=list)
@@ -33,6 +41,9 @@ class ImpactScope(BaseModel):
     blast_radius: str | None = Field(
         default=None, description="service | namespace | cluster | unknown"
     )
+    upstream: list[TopologyNeighbor] = Field(default_factory=list)
+    downstream: list[TopologyNeighbor] = Field(default_factory=list)
+    topology_source: str | None = None
 
 
 class RcaOutput(BaseModel):
