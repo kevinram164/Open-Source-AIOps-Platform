@@ -155,8 +155,8 @@ def _parse_du_stdout(text: str, *, unit: str) -> int | None:
     return n
 
 
-def _parse_df_used(text: str) -> int | None:
-    """Parse `df -B1` / `df -Pk` Used column for the mount."""
+def _parse_df_used(text: str, *, block_size: int) -> int | None:
+    """Parse df Used column; block_size is 1 (df -B1) or 1024 (df -Pk)."""
     lines = [ln for ln in (text or "").splitlines() if ln.strip()]
     if len(lines) < 2:
         return None
@@ -164,13 +164,10 @@ def _parse_df_used(text: str) -> int | None:
     if len(parts) < 3:
         return None
     try:
-        used = int(parts[2])
+        used_blocks = int(parts[2])
     except ValueError:
         return None
-    # df -Pk: Capacity column looks like "45%"
-    if len(parts) >= 5 and parts[4].endswith("%"):
-        return used * 1024
-    return used
+    return used_blocks * block_size
 
 
 def _kubectl_exec(
@@ -251,8 +248,8 @@ def _du_bytes(
     timeout_s: int = 22,
 ) -> tuple[int | None, str]:
     """
-    Return (used_bytes, method). Prefer du -sk; on timeout/fail use df on mount
-    (good for dedicated PVs like MinIO; approximate on shared NFS).
+    Return (used_bytes, method). Prefer du -sk; on timeout/fail use df on mount.
+    Note: df on shared NFS reflects the whole share — caller must sanity-check vs claim.
     """
     attempts: list[tuple[list[str], str]] = [
         (["du", "-sk", path], "k"),
@@ -280,7 +277,7 @@ def _du_bytes(
         if "timed out" in err:
             break
 
-    for inner in (["df", "-B1", path], ["df", "-Pk", path]):
+    for inner, block_size in ((["df", "-B1", path], 1), (["df", "-Pk", path], 1024)):
         rc, stdout, err = _kubectl_exec(
             namespace=namespace,
             pod=pod,
@@ -288,7 +285,7 @@ def _du_bytes(
             inner=inner,
             timeout_s=8,
         )
-        used = _parse_df_used(stdout)
+        used = _parse_df_used(stdout, block_size=block_size)
         if rc == 0 and used is not None:
             return used, "df"
         last_err = err or last_err
@@ -381,6 +378,28 @@ def _measure_one(
             "capacity_human": _fmt_bytes(cap) if cap else None,
             "request": str(req) if req else None,
         }
+
+    # used ≫ claim → shared NFS / df share / unit bug — do not report as "hot PVC"
+    if cap and cap > 0 and used > cap * 2:
+        return {
+            "namespace": ns,
+            "persistentvolumeclaim": name,
+            "method": method,
+            "error": "used_exceeds_claim",
+            "warning": (
+                f"measured { _fmt_bytes(used) } > 2× claim { _fmt_bytes(cap) } "
+                f"(shared FS or bad parse via {method}) — % skipped"
+            ),
+            "pod": pod,
+            "mount_path": path,
+            "used_bytes": used,
+            "used_human": _fmt_bytes(used),
+            "capacity_bytes": cap,
+            "capacity_human": _fmt_bytes(cap),
+            "request": str(req) if req else None,
+            "used_percent": None,
+        }
+
     pct = round(100.0 * used / cap, 1) if cap and cap > 0 else None
     return {
         "namespace": ns,
@@ -474,6 +493,11 @@ def collect_pvc_usage_via_du(
                 continue
             if row:
                 results.append(row)
+                if row.get("warning"):
+                    out["warnings"].append(
+                        f"{row.get('namespace')}/{row.get('persistentvolumeclaim')}: "
+                        f"{row['warning']}"
+                    )
 
     ok = [r for r in results if r.get("used_percent") is not None]
     ok.sort(
