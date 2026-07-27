@@ -41,5 +41,26 @@ oc -n observability get deploy,svc -l app.kubernetes.io/name=opentelemetry-colle
 oc -n npd-movie set env deploy/movie-api --list | grep OTEL_
 oc -n aiops-core set env deploy/incident-api --list | grep OTEL_
 
-# Then open Coroot / Instana Application Perspectives for the service name
+# OTEL init in logs (stderr)
+oc -n aiops-core logs deploy/incident-api --since=1h | grep '\[otel\]'
+oc -n npd-movie logs deploy/movie-api --since=1h | grep '\[otel\]'
+
+# Generate traffic then check collector accepted spans
+POD_IP=$(oc -n observability get pod -l app.kubernetes.io/name=opentelemetry-collector -o jsonpath='{.items[0].status.podIP}')
+curl -skS https://incident-api-aiops-core.apps.ocp01.npd.co/api/v1/incidents >/dev/null || true
+curl -skS https://cinehome.automationecom.click/api/movies >/dev/null || true
+oc -n observability run curl-m --rm -i --restart=Never --image=curlimages/curl:8.5.0 -- \
+  curl -s "http://${POD_IP}:8888/metrics" | grep otelcol_receiver_accepted_spans
 ```
+
+### Instana UI (important)
+
+Do **not** filter `Dest Kubernetes Service > name` for OTEL apps — that tag is often empty.
+
+Use instead:
+
+- **Dest Service > Name** equals `incident-api` / `movie-api` / `media-worker` / `rca-agent`
+- or **Call > Technology** equals `OpenTelemetry`
+- Application Perspective tag: `kubernetes.namespace.name` equals `aiops-core` / `npd-movie` (not `Kubernetes Deployment > namespace`)
+
+Banking shows up because spans carry `service.name` + collector `spanmetrics` + `service.instance.id←pod.uid`. Same path applies here once HTTP spans exist.
