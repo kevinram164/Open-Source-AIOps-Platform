@@ -786,6 +786,32 @@ tr:hover td {
   margin: 0;
 }
 
+.mermaid-wrap {
+  margin: 0.5rem 0 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(8, 14, 26, 0.85);
+  overflow-x: auto;
+}
+
+.mermaid-wrap svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-fallback {
+  margin: 0.5rem 0 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(8, 14, 26, 0.85);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

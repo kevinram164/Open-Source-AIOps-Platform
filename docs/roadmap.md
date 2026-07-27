@@ -80,6 +80,7 @@ flowchart LR
 | 7.3 | Correlation: cùng topology path → 1 incident | **Done** — fingerprint **or** related workloads |
 | 7.4 | Console: mini topology view cho incident | **Done** — Incidents click → blast radius panel |
 | 7.5 | Enrich RCA prompt bằng neighbor services | **Done** — Topo evidence + topology JSON in LLM |
+| 7C | Chat: “vẽ luồng app” → Mermaid | **Done (code)** — intent `topology` + Console render |
 
 **Demo:** Fault `transfer-service` → incident cũng nêu `frontend` / `account-service` bị ảnh hưởng.
 

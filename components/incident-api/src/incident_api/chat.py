@@ -82,8 +82,12 @@ _INVESTIGATE = re.compile(
 
 def detect_intent(question: str) -> str:
     """Platform ops Q&A is the default — not incident-centric."""
+    from incident_api.topology_chat import is_topology_question
+
     if _RESTART_CMD.search(question):
         return "command_restart"
+    if is_topology_question(question):
+        return "topology"
     if _INVESTIGATE.search(question):
         return "investigate"
     return "ops_query"
@@ -649,6 +653,8 @@ def _empty_response(answer: str, intent: str, **extra: Any) -> dict[str, Any]:
         "nba": None,
         "remediations": [],
         "ops_snapshot": None,
+        "topology": None,
+        "mermaid": None,
         "model": "none",
     }
     base.update(extra)
@@ -703,6 +709,127 @@ async def _finalize_chat(
         log.warning("chat_audit_save_failed", error=str(exc))
 
     return result
+
+
+async def _handle_topology_question(
+    *,
+    question: str,
+    namespace: str | None,
+) -> dict[str, Any]:
+    from incident_api.topology_chat import (
+        fetch_topology,
+        format_topology_answer,
+        is_cluster_wide_request,
+        resolve_topology_center,
+        topology_to_mermaid,
+    )
+
+    if is_cluster_wide_request(question):
+        return _empty_response(
+            "Mình không dump cả cụm OCP thành một sơ đồ (quá lớn, khó đọc). "
+            "Hãy hỏi theo app, ví dụ: «vẽ luồng app movie», «topology banking», "
+            "hoặc «blast radius transfer-service».",
+            "topology",
+            evidence=["scope=cluster rejected"],
+            recommendation="Chọn namespace/app: npd-movie, npd-banking, hoặc aiops-core.",
+            suggested_followups=[
+                "Vẽ luồng app movie",
+                "Vẽ dependency banking",
+                "Topology transfer-service",
+            ],
+            model="topology",
+        )
+
+    ns, wl = resolve_topology_center(
+        question, namespace=namespace, service_hints=_SERVICE_HINTS
+    )
+    if not wl:
+        return _empty_response(
+            "Chưa xác định được app/workload để vẽ. "
+            "Thử: «vẽ luồng movie», «sơ đồ banking», hoặc ghi rõ service "
+            "(movie-api, transfer-service, incident-api).",
+            "topology",
+            evidence=["center unresolved"],
+            recommendation="Ghi tên app hoặc workload trong câu hỏi.",
+            suggested_followups=[
+                "Vẽ luồng app movie",
+                "Topology api-producer",
+                "Blast radius rca-agent",
+            ],
+            model="topology",
+        )
+
+    try:
+        topo = await fetch_topology(ns, wl, hops=2)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("topology_chat_failed", error=str(exc), namespace=ns, workload=wl)
+        return _empty_response(
+            f"Không lấy được topology cho `{ns}/{wl}`: {exc}. "
+            "Kiểm tra rca-agent và COROOT_PROJECT_ID (fallback static vẫn có cho lab apps).",
+            "topology",
+            evidence=[str(exc)],
+            model="topology-error",
+        )
+
+    mermaid = topology_to_mermaid(topo)
+    answer, evidence = format_topology_answer(topo, mermaid=mermaid)
+    center = topo.get("center") or {}
+    return _empty_response(
+        answer,
+        "topology",
+        evidence=evidence,
+        recommendation="Dùng sơ đồ để ước lượng blast radius khi incident xảy ra ở center.",
+        suggested_followups=[
+            f"Why is {wl} down?" if wl else "Pods nào CrashLoop?",
+            "PVC nào dùng trên 80%?",
+            "Pods nào đang cao tải nhất?",
+        ],
+        impact_scope={
+            "namespaces": list(
+                {
+                    *(
+                        [center.get("namespace")]
+                        if center.get("namespace")
+                        else ([ns] if ns else [])
+                    ),
+                    *[
+                        n.get("namespace")
+                        for n in (topo.get("upstream") or []) + (topo.get("downstream") or [])
+                        if n.get("namespace")
+                    ],
+                }
+            ),
+            "workloads": list(
+                {
+                    *(
+                        [center.get("name")]
+                        if center.get("name")
+                        else ([wl] if wl else [])
+                    ),
+                    *[
+                        n.get("name")
+                        for n in (topo.get("upstream") or []) + (topo.get("downstream") or [])
+                        if n.get("name")
+                    ],
+                }
+            ),
+            "blast_radius": "service",
+            "upstream": topo.get("upstream") or [],
+            "downstream": topo.get("downstream") or [],
+            "topology_source": topo.get("source"),
+        },
+        topology=topo,
+        mermaid=mermaid,
+        model="topology",
+        incident={
+            "id": None,
+            "external_id": "TOPO",
+            "title": f"Topology {ns}/{wl}",
+            "namespace": ns,
+            "workload": wl,
+            "status": "diagram",
+        },
+    )
 
 
 async def _handle_restart_command(
@@ -801,6 +928,12 @@ async def handle_chat(
 
     if intent == "command_restart":
         result = await _handle_restart_command(session, question=question, namespace=namespace)
+        return await _finalize_chat(
+            session, session_id=sid, question=question, namespace=namespace, result=result
+        )
+
+    if intent == "topology":
+        result = await _handle_topology_question(question=question, namespace=namespace)
         return await _finalize_chat(
             session, session_id=sid, question=question, namespace=namespace, result=result
         )

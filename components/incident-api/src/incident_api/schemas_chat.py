@@ -48,6 +48,12 @@ class ChatResponse(BaseModel):
     nba: dict | None = None
     remediations: list[dict] = Field(default_factory=list)
     ops_snapshot: dict | None = None
+    topology: dict | None = Field(
+        default=None, description="Phase 7 topology payload (center/up/down/edges)"
+    )
+    mermaid: str | None = Field(
+        default=None, description="Deterministic Mermaid flowchart from topology edges"
+    )
     model: str | None = None
 
     @field_validator("evidence", mode="before")

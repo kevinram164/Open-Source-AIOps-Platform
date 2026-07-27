@@ -1,12 +1,14 @@
 import { FormEvent, useState } from "react";
 import { askChat, ChatResponse, resetChatSessionId } from "./api";
+import { MermaidBlock } from "./MermaidBlock";
 
 const SUGGESTIONS = [
+  "Vẽ luồng app movie",
+  "Topology banking",
   "Pods nào đang cao tải nhất?",
   "Node nào đang đầy disk?",
   "PVC nào dùng trên 80%?",
   "Có pod nào CrashLoopBackOff không?",
-  "Why is Payment Service down?",
 ];
 
 type Props = { onRemediationsChanged?: () => void };
@@ -57,11 +59,10 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
 
   return (
     <div className="panel">
-      <div className="hero-kicker">Ops assistant · Phase 6</div>
+      <div className="hero-kicker">Ops assistant · Phase 6–7</div>
       <h1>Ask the platform</h1>
       <p className="lead">
-        Multi-turn ops Q&amp;A. Context pack (metrics, failures, events, PVC, HPA) + session memory.
-        Restart tạo pending remediation — không tự chạy.
+        Ops Q&amp;A + service topology (Mermaid). Restart tạo pending remediation — không tự chạy.
       </p>
 
       <div className="ask-shell">
@@ -203,7 +204,21 @@ export function ChatPanel({ onRemediationsChanged }: Props) {
             </div>
           )}
 
-          <div className="answer">{result.answer}</div>
+          {result.mermaid && (
+            <>
+              <div className="section-title">Service map</div>
+              <MermaidBlock chart={result.mermaid} />
+              {result.topology?.source && (
+                <p className="muted" style={{ marginTop: "0.5rem" }}>
+                  source={result.topology.source}
+                </p>
+              )}
+            </>
+          )}
+
+          <div className="answer">
+            {result.answer.replace(/```mermaid[\s\S]*?```/g, "").trim()}
+          </div>
 
           {(() => {
             const items = Array.isArray(result.evidence)

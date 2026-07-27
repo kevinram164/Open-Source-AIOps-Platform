@@ -73,6 +73,8 @@ export type ChatResponse = {
     facts_keys?: string[];
     topic?: string;
   } | null;
+  topology?: IncidentTopology | null;
+  mermaid?: string | null;
   model: string | null;
 };
 
