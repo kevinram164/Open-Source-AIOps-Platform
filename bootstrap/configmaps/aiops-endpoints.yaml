@@ -22,7 +22,7 @@ data:
   COROOT_NAMESPACE: "observability"
   # Phase 7B — live topology (set project id from Coroot URL: /p/<id>/...)
   COROOT_TOPOLOGY_ENABLED: "true"
-  COROOT_PROJECT_ID: ""
+  COROOT_PROJECT_ID: "8v7g4sa1"
   # Optional if Coroot requires login (anonymous labs leave blank)
   # COROOT_EMAIL: "admin@example.com"
   # COROOT_PASSWORD: "change-me"
