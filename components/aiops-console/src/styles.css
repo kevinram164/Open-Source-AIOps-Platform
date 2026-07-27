@@ -692,15 +692,74 @@ tr:hover td {
 }
 
 .row-selected td {
-  background: rgba(56, 189, 248, 0.08);
+  background: rgba(251, 113, 133, 0.1);
 }
 
-.topo-panel {
-  margin-top: 1.5rem;
-  padding: 1.25rem 1.35rem;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: linear-gradient(145deg, rgba(14, 22, 38, 0.9), rgba(8, 14, 26, 0.75));
+/* Incidents: list left · blast drawer slides in from right */
+.incidents-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  width: 100%;
+  max-width: none;
+  min-height: calc(100vh - 4rem);
+  align-items: stretch;
+}
+
+.incidents-shell--open {
+  grid-template-columns: minmax(0, 1fr) minmax(440px, 50%);
+}
+
+.incidents-main.panel {
+  margin: 0;
+  min-width: 0;
+  max-width: none;
+  animation: none;
+}
+
+.incidents-shell--open .incidents-main.panel {
+  padding-right: 0.5rem;
+}
+
+.blast-drawer {
+  position: relative;
+  min-width: 0;
+  border-left: 1px solid var(--line);
+  background: linear-gradient(160deg, rgba(18, 12, 16, 0.98), rgba(8, 12, 22, 0.96));
+  animation: blast-slide-in 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+
+.blast-drawer-inner {
+  height: 100%;
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  padding: 1.35rem 1.4rem 2rem;
+  animation: blast-fade-up 0.45s ease 0.05s both;
+}
+
+@keyframes blast-slide-in {
+  from {
+    transform: translateX(12%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes blast-fade-up {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .topo-header {
@@ -725,8 +784,13 @@ tr:hover td {
   gap: 0.65rem;
   margin-bottom: 1rem;
   padding: 0.65rem 0.85rem;
-  border-left: 3px solid var(--accent);
-  background: rgba(61, 220, 151, 0.06);
+  border-left: 3px solid #fb7185;
+  background: rgba(251, 113, 133, 0.1);
+}
+
+.topo-center--fault {
+  border-left-color: #fb7185;
+  background: rgba(251, 113, 133, 0.12);
 }
 
 .topo-center-label {
@@ -769,22 +833,26 @@ tr:hover td {
 }
 
 .topo-leg-caller {
-  background: rgba(56, 189, 248, 0.2);
-  color: #7dd3fc;
+  background: rgba(251, 191, 36, 0.22);
+  color: #fbbf24;
 }
 
 .topo-leg-center {
-  background: rgba(61, 220, 151, 0.2);
-  color: var(--accent);
+  background: rgba(251, 113, 133, 0.22);
+  color: #fda4af;
 }
 
 .topo-leg-dep {
-  background: rgba(251, 191, 36, 0.18);
-  color: #fbbf24;
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
 }
 
 .topo-diagram {
   margin-bottom: 1rem;
+}
+
+.topo-diagram--hero {
+  margin: 0.25rem 0 1.25rem;
 }
 
 .topo-col-title {
@@ -835,9 +903,40 @@ tr:hover td {
   overflow-x: auto;
 }
 
+.mermaid-wrap--hero {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  min-height: 420px;
+  border-color: rgba(251, 113, 133, 0.25);
+  background:
+    radial-gradient(ellipse at 30% 40%, rgba(251, 113, 133, 0.08), transparent 55%),
+    radial-gradient(ellipse at 75% 50%, rgba(251, 191, 36, 0.06), transparent 50%),
+    rgba(6, 10, 18, 0.95);
+}
+
 .mermaid-wrap svg {
   max-width: 100%;
+  width: 100%;
   height: auto;
+  min-height: 380px;
+}
+
+.mermaid-wrap--hero svg {
+  min-height: 400px;
+}
+
+/* Flowing edge animation (impact / traffic direction) */
+.mermaid-wrap--flow path.topo-edge-flow,
+.mermaid-wrap--flow .edgePaths path,
+.mermaid-wrap--flow .flowchart-link {
+  stroke-dasharray: 10 8;
+  animation: topo-edge-dash 1.15s linear infinite;
+}
+
+@keyframes topo-edge-dash {
+  to {
+    stroke-dashoffset: -36;
+  }
 }
 
 .mermaid-fallback {
@@ -891,5 +990,13 @@ tr:hover td {
   }
   .topo-grid {
     grid-template-columns: 1fr;
+  }
+  .incidents-shell--open {
+    grid-template-columns: 1fr;
+  }
+  .blast-drawer {
+    border-left: none;
+    border-top: 1px solid var(--line);
+    max-height: 70vh;
   }
 }

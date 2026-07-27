@@ -1,9 +1,14 @@
 import { useEffect, useId, useRef, useState } from "react";
 
-type Props = { chart: string };
+type Props = {
+  chart: string;
+  className?: string;
+  /** Animate edge strokes (flow along path) */
+  animateFlow?: boolean;
+};
 
 /** Renders a Mermaid flowchart (Phase 7C). */
-export function MermaidBlock({ chart }: Props) {
+export function MermaidBlock({ chart, className, animateFlow }: Props) {
   const id = useId().replace(/:/g, "");
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -19,10 +24,31 @@ export function MermaidBlock({ chart }: Props) {
           theme: "dark",
           securityLevel: "strict",
           fontFamily: "IBM Plex Sans, system-ui, sans-serif",
+          flowchart: {
+            curve: "basis",
+            padding: 16,
+            nodeSpacing: 40,
+            rankSpacing: 56,
+            htmlLabels: true,
+          },
         });
-        const { svg } = await mermaid.render(`mmd-${id}`, chart);
+        const { svg } = await mermaid.render(`mmd-${id}-${Date.now()}`, chart);
         if (!cancelled && ref.current) {
           ref.current.innerHTML = svg;
+          const svgEl = ref.current.querySelector("svg");
+          if (svgEl) {
+            svgEl.setAttribute("width", "100%");
+            svgEl.removeAttribute("height");
+            svgEl.style.maxWidth = "100%";
+            svgEl.style.height = "auto";
+            svgEl.style.minHeight = "380px";
+          }
+          if (animateFlow) {
+            const edgeRoots = ref.current.querySelectorAll(
+              ".edgePaths path, .flowchart-link, g.edgePath path",
+            );
+            edgeRoots.forEach((p) => p.classList.add("topo-edge-flow"));
+          }
           setError(null);
         }
       } catch (err) {
@@ -35,7 +61,7 @@ export function MermaidBlock({ chart }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [chart, id]);
+  }, [chart, id, animateFlow]);
 
   if (error) {
     return (
@@ -45,5 +71,9 @@ export function MermaidBlock({ chart }: Props) {
     );
   }
 
-  return <div className="mermaid-wrap" ref={ref} aria-label="Service topology diagram" />;
+  const cls = ["mermaid-wrap", className, animateFlow ? "mermaid-wrap--flow" : ""]
+    .filter(Boolean)
+    .join(" ");
+
+  return <div className={cls} ref={ref} aria-label="Service topology diagram" />;
 }

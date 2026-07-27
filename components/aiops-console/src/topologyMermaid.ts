@@ -24,7 +24,8 @@ function neighborId(n: TopologyNeighbor): string {
 }
 
 /**
- * Blast-radius Mermaid: callers (left) → incident center → dependencies (right).
+ * Blast-radius Mermaid:
+ * yellow callers (affected) → red center (fault) → gray deps
  */
 export function topologyToMermaid(topo: IncidentTopology): string {
   const center = topo.center || {};
@@ -34,8 +35,8 @@ export function topologyToMermaid(topo: IncidentTopology): string {
       ? `${center.namespace}/${center.name}`
       : center.name || "incident");
 
-  const upstream = (topo.upstream || []).slice(0, 12);
-  const downstream = (topo.downstream || []).slice(0, 12);
+  const upstream = (topo.upstream || []).slice(0, 10);
+  const downstream = (topo.downstream || []).slice(0, 10);
 
   const lines: string[] = ["flowchart LR"];
   const declared = new Set<string>();
@@ -50,50 +51,47 @@ export function topologyToMermaid(topo: IncidentTopology): string {
     return id;
   }
 
-  const centerId = ensure(cid, "center");
+  const centerId = ensure(cid, "fault");
 
   if (upstream.length) {
-    lines.push("  subgraph CALLERS[\"Bị ảnh hưởng (gọi vào)\"]");
+    lines.push('  subgraph CALLERS["Bị ảnh hưởng"]');
     lines.push("    direction TB");
     for (const n of upstream) {
-      const nid = ensure(neighborId(n), "caller");
-      lines.push(`    ${nid}`);
+      lines.push(`    ${ensure(neighborId(n), "affected")}`);
     }
     lines.push("  end");
     for (const n of upstream) {
-      lines.push(`  ${mid(shortLabel(neighborId(n)))} -->|caller| ${centerId}`);
+      lines.push(`  ${mid(shortLabel(neighborId(n)))} ==> ${centerId}`);
     }
   }
 
   if (downstream.length) {
-    lines.push("  subgraph DEPS[\"Cần để chạy (dependency)\"]");
+    lines.push('  subgraph DEPS["Dependency"]');
     lines.push("    direction TB");
     for (const n of downstream) {
-      const nid = ensure(neighborId(n), "dep");
-      lines.push(`    ${nid}`);
+      lines.push(`    ${ensure(neighborId(n), "dep")}`);
     }
     lines.push("  end");
     for (const n of downstream) {
-      const kind = n.kind && n.kind !== "ebpf" && n.kind !== "dep" ? n.kind : "depends";
-      lines.push(`  ${centerId} -->|${kind}| ${mid(shortLabel(neighborId(n)))}`);
+      lines.push(`  ${centerId} -.-> ${mid(shortLabel(neighborId(n)))}`);
     }
   }
 
-  // Edge fallback if lists empty but edges exist
   if (!upstream.length && !downstream.length && topo.edges?.length) {
     for (const e of topo.edges.slice(0, 24)) {
       const frm = shortLabel(e.from);
       const to = shortLabel(e.to);
       ensure(frm);
       ensure(to);
-      const kind = e.kind && e.kind !== "ebpf" ? e.kind : "";
-      if (kind) lines.push(`  ${mid(frm)} -->|${kind}| ${mid(to)}`);
-      else lines.push(`  ${mid(frm)} --> ${mid(to)}`);
+      lines.push(`  ${mid(frm)} --> ${mid(to)}`);
     }
   }
 
-  lines.push("  classDef center fill:#3ddc97,stroke:#0e1626,color:#060a12,font-weight:bold");
-  lines.push("  classDef caller fill:#38bdf8,stroke:#0e1626,color:#060a12");
-  lines.push("  classDef dep fill:#fbbf24,stroke:#0e1626,color:#060a12");
+  // Soft red = fault · yellow = affected · gray = deps
+  lines.push(
+    "  classDef fault fill:#fb7185,stroke:#9f1239,color:#1a0508,font-weight:bold",
+  );
+  lines.push("  classDef affected fill:#fbbf24,stroke:#b45309,color:#1a1000");
+  lines.push("  classDef dep fill:#94a3b8,stroke:#475569,color:#0f172a");
   return lines.join("\n");
 }
