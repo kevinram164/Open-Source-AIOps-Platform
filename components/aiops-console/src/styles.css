@@ -709,7 +709,7 @@ tr:hover td {
 }
 
 .incidents-shell--open {
-  grid-template-columns: minmax(0, 0.9fr) minmax(520px, 1.15fr);
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 48%);
 }
 
 .incidents-main.panel {
@@ -855,6 +855,151 @@ tr:hover td {
   margin: 0.25rem 0 1.25rem;
 }
 
+/* Compact blast map: left column | fault | right column */
+.blast-map {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px minmax(120px, 0.85fr) 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.35rem 0.25rem;
+  margin: 0 0 1.15rem;
+  padding: 0.85rem 0.75rem;
+  border: 1px solid rgba(251, 113, 133, 0.22);
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(251, 113, 133, 0.07), transparent 60%),
+    rgba(6, 10, 18, 0.92);
+}
+
+.blast-map-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.blast-map-col--center {
+  align-items: stretch;
+  justify-content: center;
+}
+
+.blast-map-col-title {
+  font-size: 0.68rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.15rem;
+  text-align: center;
+}
+
+.blast-map-empty {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.blast-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  min-width: 0;
+}
+
+.blast-chip-label {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.blast-chip-meta {
+  font-size: 0.68rem;
+  opacity: 0.8;
+}
+
+.blast-chip--affected {
+  background: rgba(251, 191, 36, 0.2);
+  border-color: rgba(180, 83, 9, 0.55);
+  color: #fde68a;
+}
+
+.blast-chip--fault {
+  background: rgba(251, 113, 133, 0.28);
+  border-color: rgba(159, 18, 57, 0.75);
+  color: #fecdd3;
+  box-shadow: 0 0 0 1px rgba(251, 113, 133, 0.25);
+  animation: blast-fault-pulse 2.2s ease-in-out infinite;
+}
+
+.blast-chip--dep {
+  background: rgba(148, 163, 184, 0.18);
+  border-color: rgba(71, 85, 105, 0.7);
+  color: #e2e8f0;
+}
+
+@keyframes blast-fault-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(251, 113, 133, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 12px 1px rgba(251, 113, 133, 0.35);
+  }
+}
+
+.blast-map-flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 2.5rem;
+}
+
+.blast-flow-line {
+  display: block;
+  width: 100%;
+  height: 2px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(
+    90deg,
+    currentColor 0 6px,
+    transparent 6px 12px
+  );
+  background-size: 18px 2px;
+  animation: blast-flow 0.9s linear infinite;
+  opacity: 0.85;
+}
+
+.blast-flow-line--in {
+  color: #fbbf24;
+}
+
+.blast-flow-line--out {
+  color: #94a3b8;
+}
+
+@keyframes blast-flow {
+  to {
+    background-position: 18px 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .blast-map {
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+  }
+  .blast-map-flow {
+    min-height: 18px;
+    transform: rotate(90deg);
+    width: 40px;
+    margin: 0 auto;
+  }
+}
+
 .topo-col-title {
   font-size: 0.75rem;
   letter-spacing: 0.06em;
@@ -905,13 +1050,12 @@ tr:hover td {
 
 .mermaid-wrap--hero {
   margin: 0;
-  padding: 1.15rem 1.2rem;
-  min-height: 560px;
+  padding: 0.85rem 1rem;
+  min-height: 0;
   overflow: auto;
   border-color: rgba(251, 113, 133, 0.25);
   background:
-    radial-gradient(ellipse at 50% 35%, rgba(251, 113, 133, 0.1), transparent 55%),
-    radial-gradient(ellipse at 50% 75%, rgba(148, 163, 184, 0.08), transparent 50%),
+    radial-gradient(ellipse at 50% 45%, rgba(251, 113, 133, 0.08), transparent 55%),
     rgba(6, 10, 18, 0.95);
 }
 
@@ -919,19 +1063,10 @@ tr:hover td {
   max-width: 100%;
   width: 100%;
   height: auto;
-  min-height: 380px;
 }
 
 .mermaid-wrap--hero svg {
-  min-height: 520px;
-}
-
-.mermaid-wrap--hero .nodeLabel,
-.mermaid-wrap--hero .label,
-.mermaid-wrap--hero foreignObject,
-.mermaid-wrap--hero .nodeLabel span {
-  font-size: 13px !important;
-  line-height: 1.25 !important;
+  min-height: 0;
 }
 
 /* Flowing edge animation (impact / traffic direction) */

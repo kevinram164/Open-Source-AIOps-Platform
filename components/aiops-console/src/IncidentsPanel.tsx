@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Incident, IncidentTopology, getIncidentTopology, listIncidents } from "./api";
-import { MermaidBlock } from "./MermaidBlock";
-import { topologyToMermaid } from "./topologyMermaid";
+import { BlastRadiusGraph } from "./BlastRadiusGraph";
 
 function NeighborList({
   title,
@@ -80,8 +79,6 @@ export function IncidentsPanel() {
     setTopoError(null);
   }, []);
 
-  const mermaid = useMemo(() => (topo ? topologyToMermaid(topo) : ""), [topo]);
-
   return (
     <div className={`incidents-shell${selected ? " incidents-shell--open" : ""}`}>
       <div className="incidents-main panel">
@@ -147,7 +144,7 @@ export function IncidentsPanel() {
                   {selected.workload ? ` · ${selected.workload}` : ""}
                 </h2>
                 <p className="muted">
-                  Trên → dưới: vàng (bị ảnh hưởng) · đỏ (sự cố) · xám (dependency).
+                  Trái = bị ảnh hưởng · giữa = sự cố · phải = dependency.
                 </p>
               </div>
               <button type="button" className="btn btn-ghost btn-sm" onClick={closeDrawer}>
@@ -159,26 +156,13 @@ export function IncidentsPanel() {
             {topoError && <p className="error">{topoError}</p>}
             {topo && !topoLoading && (
               <>
-                <div className="topo-center topo-center--fault">
-                  <span className="topo-center-label">Sự cố tại</span>
-                  <span className="topo-center-id">
-                    {(topo.center?.namespace ? `${topo.center.namespace}/` : "") +
-                      (topo.center?.name || selected.workload || "—")}
-                  </span>
-                  <span className="badge warn">{topo.source || "unknown"}</span>
-                </div>
-
                 <div className="topo-legend">
                   <span className="topo-leg topo-leg-caller">Vàng — bị ảnh hưởng</span>
                   <span className="topo-leg topo-leg-center">Đỏ — sự cố</span>
                   <span className="topo-leg topo-leg-dep">Xám — dependency</span>
                 </div>
 
-                {mermaid && (
-                  <div className="topo-diagram topo-diagram--hero">
-                    <MermaidBlock chart={mermaid} animateFlow className="mermaid-wrap--hero" />
-                  </div>
-                )}
+                <BlastRadiusGraph topo={topo} fallbackWorkload={selected.workload} />
 
                 <div className="topo-grid">
                   <NeighborList

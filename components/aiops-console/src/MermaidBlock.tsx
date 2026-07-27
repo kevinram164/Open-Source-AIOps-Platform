@@ -25,16 +25,16 @@ export function MermaidBlock({ chart, className, animateFlow }: Props) {
           securityLevel: "strict",
           fontFamily: "IBM Plex Sans, system-ui, sans-serif",
           themeVariables: {
-            fontSize: "15px",
+            fontSize: "13px",
             fontFamily: "IBM Plex Sans, system-ui, sans-serif",
           },
           flowchart: {
             curve: "basis",
-            padding: 20,
-            nodeSpacing: 28,
-            rankSpacing: 72,
+            padding: 12,
+            nodeSpacing: 18,
+            rankSpacing: 48,
             htmlLabels: true,
-            useMaxWidth: false,
+            useMaxWidth: true,
           },
         });
         const { svg } = await mermaid.render(`mmd-${id}-${Date.now()}`, chart);
@@ -42,12 +42,10 @@ export function MermaidBlock({ chart, className, animateFlow }: Props) {
           ref.current.innerHTML = svg;
           const svgEl = ref.current.querySelector("svg");
           if (svgEl) {
-            svgEl.removeAttribute("width");
+            svgEl.setAttribute("width", "100%");
             svgEl.removeAttribute("height");
-            svgEl.style.width = "100%";
             svgEl.style.maxWidth = "100%";
             svgEl.style.height = "auto";
-            svgEl.style.minHeight = "520px";
           }
           if (animateFlow) {
             const edgeRoots = ref.current.querySelectorAll(
