@@ -17,11 +17,14 @@ class Settings(BaseSettings):
     prometheus_url: str = ""
     coroot_url: str = ""
     coroot_namespace: str = "observability"
-    # Phase 7B — live topology from Coroot service map
+        # Phase 7B — live topology from Coroot service map
     coroot_topology_enabled: bool = True
     coroot_project_id: str = ""  # from UI URL /api/project/<id>/...
     coroot_email: str = ""  # optional session login
     coroot_password: str = ""
+    # Drop control-plane/monitoring/noise from blast-radius (like Coroot UI filter)
+    coroot_topology_filter: bool = True
+    coroot_topology_max_neighbors: int = 25
     incident_api_url: str = ""
     postgresql_host: str = ""
     postgresql_port: int = 5432

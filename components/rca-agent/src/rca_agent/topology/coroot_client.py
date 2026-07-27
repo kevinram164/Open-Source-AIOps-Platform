@@ -11,6 +11,7 @@ Auth (optional, lab often anonymous):
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import quote
 
@@ -20,8 +21,52 @@ from rca_agent.config import settings
 
 log = structlog.get_logger()
 
-# Coroot: upstreams = deps this app calls; downstreams = clients that call this app.
-# Our blast-radius vocabulary: upstream = callers, downstream = dependencies.
+_NOISE_CATEGORIES = {"control-plane", "monitoring", "controlplane"}
+_DATA_NAME_RE = re.compile(
+    r"redis|postgres|pgsql|mysql|mongo|minio|kafka|rabbit|elastic|memcached|nats|clickhouse",
+    re.I,
+)
+_NOISE_NAME_RE = re.compile(
+    r"^(kube|openshift|csi-|olm|marketplace|catalog|packageserver|etcd|"
+    r"prometheus|thanos|grafana|instana|coroot|argocd|oauth|router-default|"
+    r"dns-default|metrics-server|machine-config|console|authentication|"
+    r"network-check|external-secrets|operator-controller|harbor-|jenkins|"
+    r"keycloak|vault|apiserver|controller-manager|downloads)",
+    re.I,
+)
+
+
+def _app_category(app: dict[str, Any]) -> str:
+    raw = app.get("category") or app.get("Category") or ""
+    return str(raw).strip().lower().replace("_", "-")
+
+
+def _keep_neighbor(
+    *,
+    app: dict[str, Any] | None,
+    app_id: str,
+    center_ns: str,
+    filter_enabled: bool,
+) -> bool:
+    """Keep app/data neighbors; drop control-plane/monitoring (Coroot UI-style)."""
+    if not filter_enabled:
+        return True
+    ns, _kind, name = _parse_app_id(app_id)
+    # External host:port noise
+    if ":" in (name or "") and re.search(r":\d+$", name or ""):
+        return bool(_DATA_NAME_RE.search(name or ""))
+    if _NOISE_NAME_RE.search(name or ""):
+        return False
+    cat = _app_category(app or {})
+    if cat in _NOISE_CATEGORIES:
+        return False
+    if ns and center_ns and ns.lower() == center_ns.lower():
+        return True
+    if _DATA_NAME_RE.search(name or "") or _DATA_NAME_RE.search(ns or ""):
+        return True
+    if cat in {"application", "applications"}:
+        return True
+    return False
 
 
 def _parse_app_id(raw: Any) -> tuple[str, str, str]:
@@ -73,7 +118,6 @@ def _projects_from_user(payload: Any) -> list[str]:
     data = _unwrap_data(payload)
     if not isinstance(data, dict):
         return []
-    # projects may be {name: id} or list
     projects = data.get("projects") or data.get("Projects") or {}
     if isinstance(projects, dict):
         return [str(v) for v in projects.values() if v] or [str(k) for k in projects.keys()]
@@ -199,13 +243,35 @@ class CorootClient:
         center_raw = center_app.get("id") or center_app.get("Id")
         center_ns, _ck, center_name = _parse_app_id(center_raw)
         center_key = str(center_raw)
+        filter_on = settings.coroot_topology_filter
+        max_n = max(5, int(settings.coroot_topology_max_neighbors or 25))
 
         upstream: list[dict[str, Any]] = []  # callers
         downstream: list[dict[str, Any]] = []  # deps
         edges: list[dict[str, str]] = []
         seen = {center_key}
-        # frontier: (app_id_str, hops_from_center, direction_bias)
         frontier: list[tuple[str, int]] = [(center_key, 0)]
+
+        def _try_add(lid: Any, *, as_downstream: bool, from_id: str, to_id: str, dist: int) -> None:
+            lid_s = str(lid)
+            if lid_s in seen:
+                return
+            meta = by_id.get(lid_s)
+            if not _keep_neighbor(
+                app=meta,
+                app_id=lid_s,
+                center_ns=center_ns,
+                filter_enabled=filter_on,
+            ):
+                seen.add(lid_s)  # don't revisit noise
+                return
+            seen.add(lid_s)
+            node = _node_from_id(lid, hops=dist + 1, kind="ebpf")
+            bucket = downstream if as_downstream else upstream
+            if len(bucket) < max_n:
+                bucket.append(node)
+                edges.append({"from": from_id, "to": to_id, "kind": "ebpf"})
+                frontier.append((lid_s, dist + 1))
 
         while frontier:
             cur_id, dist = frontier.pop(0)
@@ -214,32 +280,12 @@ class CorootClient:
             app = by_id.get(cur_id)
             if not app:
                 continue
-            # deps this app calls → our downstream
             for link in app.get("upstreams") or app.get("Upstreams") or []:
                 lid = link.get("id") if isinstance(link, dict) else link
-                lid_s = str(lid)
-                if lid_s in seen:
-                    continue
-                seen.add(lid_s)
-                node = _node_from_id(lid, hops=dist + 1, kind="ebpf")
-                if dist == 0:
-                    downstream.append(node)
-                else:
-                    # further hops: keep in downstream bucket if walking deps
-                    downstream.append(node)
-                edges.append({"from": cur_id, "to": lid_s, "kind": "ebpf"})
-                frontier.append((lid_s, dist + 1))
-            # clients → our upstream
+                _try_add(lid, as_downstream=True, from_id=cur_id, to_id=str(lid), dist=dist)
             for link in app.get("downstreams") or app.get("Downstreams") or []:
                 lid = link.get("id") if isinstance(link, dict) else link
-                lid_s = str(lid)
-                if lid_s in seen:
-                    continue
-                seen.add(lid_s)
-                node = _node_from_id(lid, hops=dist + 1, kind="ebpf")
-                upstream.append(node)
-                edges.append({"from": lid_s, "to": cur_id, "kind": "ebpf"})
-                frontier.append((lid_s, dist + 1))
+                _try_add(lid, as_downstream=False, from_id=str(lid), to_id=cur_id, dist=dist)
 
         return {
             "center": {
@@ -256,6 +302,7 @@ class CorootClient:
                 "project_id": self.project_id,
                 "app_id": center_key,
                 "via": "overview/map",
+                "filtered": filter_on,
             },
         }
 
