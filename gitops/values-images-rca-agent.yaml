@@ -1,3 +1,3 @@
 image:
   repository: harbor-platform.apps.ocp01.npd.co/aiops/rca-agent
-  tag: "9d63d19"
+  tag: "e25ec07"
