@@ -17,6 +17,16 @@ export function shortLabel(ref: string): string {
   return raw;
 }
 
+/** Break long ns/name for Mermaid node text */
+function nodeLabel(ref: string): string {
+  const label = shortLabel(ref);
+  if (label.includes("/")) {
+    const [ns, ...rest] = label.split("/");
+    return `${ns}<br/>${rest.join("/")}`;
+  }
+  return label;
+}
+
 function neighborId(n: TopologyNeighbor): string {
   if (n.id) return shortLabel(n.id);
   if (n.namespace && n.name) return `${n.namespace}/${n.name}`;
@@ -24,8 +34,8 @@ function neighborId(n: TopologyNeighbor): string {
 }
 
 /**
- * Blast-radius Mermaid:
- * yellow callers (affected) → red center (fault) → gray deps
+ * Blast-radius Mermaid (vertical):
+ * top yellow callers → mid red fault → bottom gray deps
  */
 export function topologyToMermaid(topo: IncidentTopology): string {
   const center = topo.center || {};
@@ -35,10 +45,10 @@ export function topologyToMermaid(topo: IncidentTopology): string {
       ? `${center.namespace}/${center.name}`
       : center.name || "incident");
 
-  const upstream = (topo.upstream || []).slice(0, 10);
-  const downstream = (topo.downstream || []).slice(0, 10);
+  const upstream = (topo.upstream || []).slice(0, 8);
+  const downstream = (topo.downstream || []).slice(0, 8);
 
-  const lines: string[] = ["flowchart LR"];
+  const lines: string[] = ["flowchart TB"];
   const declared = new Set<string>();
 
   function ensure(ref: string, cls?: string) {
@@ -46,35 +56,37 @@ export function topologyToMermaid(topo: IncidentTopology): string {
     if (declared.has(label)) return mid(label);
     declared.add(label);
     const id = mid(label);
-    if (cls) lines.push(`  ${id}["${label}"]:::${cls}`);
-    else lines.push(`  ${id}["${label}"]`);
+    const text = nodeLabel(ref);
+    if (cls) lines.push(`  ${id}["${text}"]:::${cls}`);
+    else lines.push(`  ${id}["${text}"]`);
     return id;
   }
 
-  const centerId = ensure(cid, "fault");
-
   if (upstream.length) {
     lines.push('  subgraph CALLERS["Bị ảnh hưởng"]');
-    lines.push("    direction TB");
+    lines.push("    direction LR");
     for (const n of upstream) {
       lines.push(`    ${ensure(neighborId(n), "affected")}`);
     }
     lines.push("  end");
-    for (const n of upstream) {
-      lines.push(`  ${mid(shortLabel(neighborId(n)))} ==> ${centerId}`);
-    }
   }
+
+  const centerId = ensure(cid, "fault");
 
   if (downstream.length) {
     lines.push('  subgraph DEPS["Dependency"]');
-    lines.push("    direction TB");
+    lines.push("    direction LR");
     for (const n of downstream) {
       lines.push(`    ${ensure(neighborId(n), "dep")}`);
     }
     lines.push("  end");
-    for (const n of downstream) {
-      lines.push(`  ${centerId} -.-> ${mid(shortLabel(neighborId(n)))}`);
-    }
+  }
+
+  for (const n of upstream) {
+    lines.push(`  ${mid(shortLabel(neighborId(n)))} ==> ${centerId}`);
+  }
+  for (const n of downstream) {
+    lines.push(`  ${centerId} -.-> ${mid(shortLabel(neighborId(n)))}`);
   }
 
   if (!upstream.length && !downstream.length && topo.edges?.length) {
@@ -87,11 +99,12 @@ export function topologyToMermaid(topo: IncidentTopology): string {
     }
   }
 
-  // Soft red = fault · yellow = affected · gray = deps
   lines.push(
-    "  classDef fault fill:#fb7185,stroke:#9f1239,color:#1a0508,font-weight:bold",
+    "  classDef fault fill:#fb7185,stroke:#9f1239,color:#1a0508,font-weight:bold,font-size:14px",
   );
-  lines.push("  classDef affected fill:#fbbf24,stroke:#b45309,color:#1a1000");
-  lines.push("  classDef dep fill:#94a3b8,stroke:#475569,color:#0f172a");
+  lines.push(
+    "  classDef affected fill:#fbbf24,stroke:#b45309,color:#1a1000,font-size:13px",
+  );
+  lines.push("  classDef dep fill:#94a3b8,stroke:#475569,color:#0f172a,font-size:13px");
   return lines.join("\n");
 }

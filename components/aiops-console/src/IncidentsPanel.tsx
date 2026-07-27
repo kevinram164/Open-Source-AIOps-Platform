@@ -147,7 +147,7 @@ export function IncidentsPanel() {
                   {selected.workload ? ` · ${selected.workload}` : ""}
                 </h2>
                 <p className="muted">
-                  Vàng = bị ảnh hưởng · Đỏ = sự cố · Xám = dependency cần để chạy.
+                  Trên → dưới: vàng (bị ảnh hưởng) · đỏ (sự cố) · xám (dependency).
                 </p>
               </div>
               <button type="button" className="btn btn-ghost btn-sm" onClick={closeDrawer}>
