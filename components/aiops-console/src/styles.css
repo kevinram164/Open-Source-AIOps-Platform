@@ -747,6 +747,46 @@ tr:hover td {
   gap: 1rem;
 }
 
+.topo-col-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.topo-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: 0 0 0.85rem;
+}
+
+.topo-leg {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+.topo-leg-caller {
+  background: rgba(56, 189, 248, 0.2);
+  color: #7dd3fc;
+}
+
+.topo-leg-center {
+  background: rgba(61, 220, 151, 0.2);
+  color: var(--accent);
+}
+
+.topo-leg-dep {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fbbf24;
+}
+
+.topo-diagram {
+  margin-bottom: 1rem;
+}
+
 .topo-col-title {
   font-size: 0.75rem;
   letter-spacing: 0.06em;

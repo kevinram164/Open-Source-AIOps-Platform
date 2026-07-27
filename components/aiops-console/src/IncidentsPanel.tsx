@@ -1,17 +1,22 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Incident, IncidentTopology, getIncidentTopology, listIncidents } from "./api";
+import { MermaidBlock } from "./MermaidBlock";
+import { topologyToMermaid } from "./topologyMermaid";
 
 function NeighborList({
   title,
+  hint,
   items,
 }: {
   title: string;
+  hint: string;
   items: { namespace?: string | null; name?: string | null; hops?: number | null; kind?: string | null }[];
 }) {
   if (!items.length) return null;
   return (
     <div className="topo-col">
       <div className="topo-col-title">{title}</div>
+      <p className="topo-col-hint">{hint}</p>
       <ul className="topo-list">
         {items.map((n) => (
           <li key={`${n.namespace}/${n.name}`}>
@@ -20,7 +25,7 @@ function NeighborList({
               {n.name}
             </span>
             <span className="topo-meta">
-              {n.hops != null ? `${n.hops}h` : ""}
+              {n.hops != null ? `${n.hops} hop` : ""}
               {n.kind ? ` · ${n.kind}` : ""}
             </span>
           </li>
@@ -68,6 +73,8 @@ export function IncidentsPanel() {
       setTopoLoading(false);
     }
   }, []);
+
+  const mermaid = useMemo(() => (topo ? topologyToMermaid(topo) : ""), [topo]);
 
   return (
     <div className="panel">
@@ -131,7 +138,7 @@ export function IncidentsPanel() {
                 {selected.workload ? ` · ${selected.workload}` : ""}
               </h2>
               <p className="muted">
-                Upstream / downstream neighbors (static adjacency + Coroot probe).
+                Sơ đồ: trái = dịch vụ bị ảnh hưởng khi center lỗi · phải = dependency center cần để chạy.
               </p>
             </div>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelected(null)}>
@@ -143,19 +150,40 @@ export function IncidentsPanel() {
           {topo && !topoLoading && (
             <>
               <div className="topo-center">
-                <span className="topo-center-label">Center</span>
+                <span className="topo-center-label">Sự cố tại</span>
                 <span className="topo-center-id">
                   {(topo.center?.namespace ? `${topo.center.namespace}/` : "") +
                     (topo.center?.name || selected.workload || "—")}
                 </span>
                 <span className="badge">{topo.source || "unknown"}</span>
               </div>
+
+              <div className="topo-legend">
+                <span className="topo-leg topo-leg-caller">Caller — bị ảnh hưởng</span>
+                <span className="topo-leg topo-leg-center">Center — sự cố</span>
+                <span className="topo-leg topo-leg-dep">Dep — cần để chạy</span>
+              </div>
+
+              {mermaid && (
+                <div className="topo-diagram">
+                  <MermaidBlock chart={mermaid} />
+                </div>
+              )}
+
               <div className="topo-grid">
-                <NeighborList title="Upstream" items={topo.upstream || []} />
-                <NeighborList title="Downstream" items={topo.downstream || []} />
+                <NeighborList
+                  title="Bị ảnh hưởng (callers)"
+                  hint="Gọi vào center — user/API có thể lỗi theo."
+                  items={topo.upstream || []}
+                />
+                <NeighborList
+                  title="Cần để chạy (dependencies)"
+                  hint="Center phụ thuộc — kiểm tra khi RCA."
+                  items={topo.downstream || []}
+                />
               </div>
               {!topo.upstream?.length && !topo.downstream?.length && (
-                <p className="muted">No neighbors in static graph for this workload.</p>
+                <p className="muted">No neighbors in topology graph for this workload.</p>
               )}
             </>
           )}
