@@ -61,6 +61,8 @@ otel:
   protocol: "grpc"
   serviceName: "remediation-controller"
   resourceAttributes: "deployment.environment=dev-ocp,k8s.namespace.name=aiops-automation,k8s.cluster.name=ocp01"
+  heartbeat: true
+  heartbeatSeconds: 30
 
 database:
   existingSecret: ""

@@ -66,6 +66,7 @@ def init_tracing(service_name: str) -> None:
 
 def instrument_fastapi(app, service_name: str) -> None:
     init_tracing(service_name)
+    start_heartbeat(service_name)
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
@@ -74,3 +75,47 @@ def instrument_fastapi(app, service_name: str) -> None:
         _log(f"fastapi instrumented service={service_name}")
     except Exception as exc:  # noqa: BLE001
         _log(f"fastapi instrument FAILED: {exc}")
+
+
+_heartbeat_started: set[str] = set()
+
+
+def start_heartbeat(service_name: str) -> None:
+    """Periodic SERVER span so Instana keeps the service visible without traffic."""
+    import threading
+    import time
+
+    if not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip():
+        return
+    if os.getenv("OTEL_HEARTBEAT", "1").strip().lower() in ("0", "false", "no", "off"):
+        return
+    if service_name in _heartbeat_started:
+        return
+    _heartbeat_started.add(service_name)
+    try:
+        interval = max(10, int(os.getenv("OTEL_HEARTBEAT_SECONDS", "30")))
+    except ValueError:
+        interval = 30
+    try:
+        from opentelemetry import trace
+        from opentelemetry.trace import SpanKind, Status, StatusCode
+
+        tracer = trace.get_tracer(service_name, "1.0")
+    except Exception:
+        return
+
+    def _loop() -> None:
+        while True:
+            try:
+                with tracer.start_as_current_span(
+                    "otel.heartbeat",
+                    kind=SpanKind.SERVER,
+                    attributes={"heartbeat": True, "http.route": "/__heartbeat__"},
+                ) as span:
+                    span.set_status(Status(StatusCode.OK))
+            except Exception:
+                pass
+            time.sleep(interval)
+
+    threading.Thread(target=_loop, name=f"otel-hb-{service_name}", daemon=True).start()
+    _log(f"heartbeat started service={service_name} every={interval}s")

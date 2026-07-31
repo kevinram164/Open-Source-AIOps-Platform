@@ -81,6 +81,10 @@ spec:
               value: {{ .Values.otel.serviceName | default "remediation-controller" | quote }}
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: {{ .Values.otel.resourceAttributes | quote }}
+            - name: OTEL_HEARTBEAT
+              value: {{ ternary "1" "0" (default true .Values.otel.heartbeat) | quote }}
+            - name: OTEL_HEARTBEAT_SECONDS
+              value: {{ .Values.otel.heartbeatSeconds | default 30 | quote }}
             {{- end }}
           livenessProbe:
             httpGet:

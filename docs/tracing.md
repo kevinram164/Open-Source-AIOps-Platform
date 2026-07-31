@@ -64,3 +64,14 @@ Use instead:
 - Application Perspective tag: `kubernetes.namespace.name` equals `aiops-core` / `npd-movie` (not `Kubernetes Deployment > namespace`)
 
 Banking shows up because spans carry `service.name` + collector `spanmetrics` + `service.instance.id←pod.uid`. Same path applies here once HTTP spans exist.
+
+## Keep services always visible on Instana
+
+APM map only retains services while recent spans exist. Each app emits `otel.heartbeat` (SERVER) every 30s when OTEL is enabled:
+
+| Env | Default |
+|-----|---------|
+| `OTEL_HEARTBEAT` | `1` (set `0` to disable) |
+| `OTEL_HEARTBEAT_SECONDS` | `30` |
+
+Implemented in: banking `common/observability.py`, movie-api / media-worker, incident-api / rca-agent / remediation-controller, npd-shop.
