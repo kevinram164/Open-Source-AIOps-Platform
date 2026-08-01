@@ -10,7 +10,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  project: aiops-platform
   source:
     repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
     targetRevision: main

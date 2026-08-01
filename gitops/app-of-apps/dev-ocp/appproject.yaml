@@ -1,0 +1,57 @@
+# Argo CD AppProject for Open-Source AIOps Platform
+# Synced by aiops-dev-ocp-root. First-time (before root uses this project):
+#   oc apply -f gitops/app-of-apps/dev-ocp/appproject.yaml -n argocd
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: aiops-platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: aiops-platform
+    app.kubernetes.io/part-of: open-aiops-platform
+spec:
+  description: "Open-Source AIOps Platform — core, automation, observability, alert integrations"
+  sourceRepos:
+    - https://github.com/kevinram164/Open-Source-AIOps-Platform.git
+    - '*'
+  destinations:
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+    - namespace: aiops-core
+      server: https://kubernetes.default.svc
+    - namespace: aiops-automation
+      server: https://kubernetes.default.svc
+    - namespace: aiops-observability
+      server: https://kubernetes.default.svc
+    - namespace: aiops-demo
+      server: https://kubernetes.default.svc
+    - namespace: postgres
+      server: https://kubernetes.default.svc
+    - namespace: npd-banking
+      server: https://kubernetes.default.svc
+    - namespace: npd-movie
+      server: https://kubernetes.default.svc
+    - namespace: openshift-monitoring
+      server: https://kubernetes.default.svc
+    - namespace: observability
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: security.openshift.io
+      kind: SecurityContextConstraints
+    - group: monitoring.coreos.com
+      kind: "*"
+    - group: route.openshift.io
+      kind: "*"
+    - group: external-secrets.io
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  orphanedResources:
+    warn: true

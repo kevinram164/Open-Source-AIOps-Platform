@@ -39,7 +39,7 @@ oc get cm cluster-monitoring-config -n openshift-monitoring -o yaml
 oc get alertmanagerconfig -n openshift-monitoring
 ```
 
-Nếu AppProject `default` chặn destination `openshift-monitoring`, whitelist ns đó hoặc apply một lần:
+Nếu AppProject `aiops-platform` chặn destination `openshift-monitoring`, whitelist ns đó trong `gitops/app-of-apps/dev-ocp/appproject.yaml` hoặc apply một lần:
 
 ```bash
 oc apply -k integrations/alertmanager/overlays/openshift-monitoring
