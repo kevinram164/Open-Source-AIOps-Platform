@@ -16,16 +16,14 @@ data:
   # Alertmanager (for reference — webhook is inbound)
   ALERTMANAGER_URL: "https://alertmanager-main.openshift-monitoring.svc:9094"
 
-    # Coroot CE — Route coroot-platform → svc coroot-coroot (ns observability)
+  # Coroot CE — Route coroot-platform → svc coroot-coroot (ns observability)
   # External API needs login (HTTP 401). rca-agent: in-cluster URL + COROOT_EMAIL/PASSWORD.
   COROOT_URL: "http://coroot-coroot.observability.svc:8080"
   COROOT_NAMESPACE: "observability"
   COROOT_TOPOLOGY_ENABLED: "true"
   COROOT_PROJECT_ID: "8v7g4sa1"
-  # Set on cluster (do NOT commit real password). Example:
-  # COROOT_EMAIL: "admin"
-  # COROOT_PASSWORD: "..."
-    COROOT_EMAIL: ""
+  # Set on cluster (do NOT commit real password). Prefer Secret over ConfigMap for password.
+  COROOT_EMAIL: ""
   COROOT_PASSWORD: ""
   COROOT_TOPOLOGY_FILTER: "true"
   COROOT_TOPOLOGY_MAX_NEIGHBORS: "25"
