@@ -15,6 +15,9 @@ spec:
     - https://github.com/kevinram164/Open-Source-AIOps-Platform.git
     - '*'
   destinations:
+    # Empty Application.destination.namespace (multi-ns bootstrap) needs '*'
+    - namespace: '*'
+      server: https://kubernetes.default.svc
     - namespace: argocd
       server: https://kubernetes.default.svc
     - namespace: aiops-core
