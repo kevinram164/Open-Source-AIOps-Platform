@@ -1,31 +1,168 @@
 {
   "annotations": { "list": [] },
   "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
   "panels": [
     {
-      "title": "Scrape UP (infra ns)",
+      "title": "Scrape UP (infra)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
       "targets": [
-        { "expr": "up{namespace=~\"postgres|redis|kong|kafka|rabbit\"}", "legendFormat": "{{namespace}}/{{job}} {{instance}}", "refId": "A" }
+        {
+          "expr": "up{namespace=~\"postgres|redis|kong|kafka|rabbit\"}",
+          "legendFormat": "{{namespace}} {{job}} {{instance}}",
+          "refId": "A"
+        }
       ],
       "datasource": { "type": "prometheus", "uid": "${datasource}" }
     },
     {
-      "title": "Kafka consumer lag",
+      "title": "Redis — connected clients",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 6 },
       "targets": [
-        { "expr": "sum by (consumergroup, topic) (kafka_consumergroup_lag) or vector(0)", "legendFormat": "{{consumergroup}} {{topic}}", "refId": "A" }
+        {
+          "expr": "redis_connected_clients{namespace=\"redis\"}",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
       ],
       "datasource": { "type": "prometheus", "uid": "${datasource}" }
     },
     {
-      "title": "Pods in infra namespaces",
+      "title": "Redis — memory used",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 6 },
       "targets": [
-        { "expr": "count by (namespace) (kube_pod_status_phase{namespace=~\"postgres|redis|kong|kafka|rabbit\",phase=\"Running\"})", "legendFormat": "{{namespace}}", "refId": "A" }
+        {
+          "expr": "redis_memory_used_bytes{namespace=\"redis\"}",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Redis — commands/s",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 6 },
+      "targets": [
+        {
+          "expr": "rate(redis_commands_processed_total{namespace=\"redis\"}[5m])",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Postgres — up",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 13 },
+      "targets": [
+        {
+          "expr": "pg_up{namespace=\"postgres\"} or up{namespace=\"postgres\",job=~\".*postgres.*|.*postgresql.*\"}",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Postgres — connections",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 10, "x": 4, "y": 13 },
+      "targets": [
+        {
+          "expr": "sum by (instance) (pg_stat_activity_count{namespace=\"postgres\"}) or sum by (instance) (pg_stat_database_numbackends{namespace=\"postgres\"})",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Postgres — database size",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 10, "x": 14, "y": 13 },
+      "targets": [
+        {
+          "expr": "pg_database_size_bytes{namespace=\"postgres\"}",
+          "legendFormat": "{{datname}} {{instance}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Kafka — consumer lag by group/topic",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "expr": "sum by (consumergroup, topic) (kafka_consumergroup_lag{namespace=\"kafka\"})",
+          "legendFormat": "{{consumergroup}} / {{topic}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Kafka — broker messages in/out",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        {
+          "expr": "sum by (topic) (rate(kafka_topic_partition_current_offset{namespace=\"kafka\"}[5m]))",
+          "legendFormat": "offset rate {{topic}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(kafka_brokers{namespace=\"kafka\"})",
+          "legendFormat": "brokers",
+          "refId": "B"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Kong — HTTP status (if scraped)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 27 },
+      "targets": [
+        {
+          "expr": "sum by (code) (rate(kong_http_requests_total{namespace=\"kong\"}[5m])) or sum by (code) (rate(kong_nginx_http_requests_total{namespace=\"kong\"}[5m]))",
+          "legendFormat": "{{code}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "RabbitMQ — messages ready (if scraped)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 27 },
+      "targets": [
+        {
+          "expr": "sum(rabbitmq_queue_messages_ready{namespace=\"rabbit\"}) or sum(rabbitmq_queue_messages{namespace=\"rabbit\"})",
+          "legendFormat": "ready",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Pods Running (infra ns)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 34 },
+      "targets": [
+        {
+          "expr": "count by (namespace) (kube_pod_status_phase{namespace=~\"postgres|redis|kong|kafka|rabbit\",phase=\"Running\"})",
+          "legendFormat": "{{namespace}}",
+          "refId": "A"
+        }
       ],
       "datasource": { "type": "prometheus", "uid": "${datasource}" }
     }
@@ -33,10 +170,17 @@
   "schemaVersion": 39,
   "tags": ["npd", "infra"],
   "templating": {
-    "list": [{ "name": "datasource", "type": "datasource", "query": "prometheus", "current": { "text": "Prometheus", "value": "Prometheus" } }]
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
   },
   "time": { "from": "now-1h", "to": "now" },
   "title": "NPD Infra (PG/Redis/Kong/Kafka/Rabbit)",
   "uid": "npd-infra",
-  "version": 1
+  "version": 2
 }
