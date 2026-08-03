@@ -86,6 +86,10 @@ data:
 {{ .Files.Get "dashboards/npd-banking.json" | indent 4 }}
   npd-shop.json: |
 {{ .Files.Get "dashboards/npd-shop.json" | indent 4 }}
+  npd-kong.json: |
+{{ .Files.Get "dashboards/npd-kong.json" | indent 4 }}
+  npd-rabbitmq.json: |
+{{ .Files.Get "dashboards/npd-rabbitmq.json" | indent 4 }}
   npd-infra.json: |
 {{ .Files.Get "dashboards/npd-infra.json" | indent 4 }}
   npd-ocp-nodes.json: |

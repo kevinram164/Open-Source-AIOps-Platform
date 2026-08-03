@@ -9,15 +9,19 @@ Dashboard **AIOps Overview**: incidents, RCA+NBA, remediations.
 
 ## NPD dashboards (folder **NPD**)
 
+Port từ `banking-demo/phase3-monitoring-keda/helm-monitoring/` (+ Nodes/Infra overview):
+
 | Dashboard | Scope |
 |-----------|--------|
-| NPD Banking | `npd-banking` pods/CPU/mem |
-| NPD Shop | `npd-shop` |
-| NPD Infra | postgres/redis/kong/kafka/rabbit + Kafka lag |
+| NPD Banking Services | HTTP RPS/p95/errors/transfer (Phase 8) |
+| NPD Shop Services | HTTP shop |
+| NPD Kong Gateway | Kong metrics |
+| NPD RabbitMQ | Rabbit metrics |
+| NPD Infra | postgres/redis/kong/kafka/rabbit + lag |
 | NPD OCP Nodes | CPU/mem/disk all nodes |
 
-JSON: `charts/grafana/dashboards/npd-*.json`.  
-Scrape + Telegram alerts: `banking-demo/phase9-gitops-platform/monitoring/DEPLOY.md`.  
+Script: `banking-demo/phase9-gitops-platform/monitoring/scripts/port_phase3_dashboards.py`  
+Scrape + Telegram: `banking-demo/phase9-gitops-platform/monitoring/DEPLOY.md`.  
 Grafana SA: `cluster-monitoring-view` + Secret `grafana-thanos-token`.
 
 ## Seed Vault
