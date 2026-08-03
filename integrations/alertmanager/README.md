@@ -1,4 +1,8 @@
-# Alertmanager → Incident API
+# Alertmanager → Incident API (+ Telegram)
+
+Telegram (dashboard lab): xem  
+`banking-demo/phase9-gitops-platform/monitoring/DEPLOY.md`  
+(`AlertmanagerConfig` `npd-telegram*` + Secret `alertmanager-telegram`).
 
 Webhook (in-cluster):
 

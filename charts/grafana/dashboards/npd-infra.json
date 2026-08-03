@@ -1,0 +1,42 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "panels": [
+    {
+      "title": "Scrape UP (infra ns)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "up{namespace=~\"postgres|redis|kong|kafka|rabbit\"}", "legendFormat": "{{namespace}}/{{job}} {{instance}}", "refId": "A" }
+      ],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Kafka consumer lag",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "sum by (consumergroup, topic) (kafka_consumergroup_lag) or vector(0)", "legendFormat": "{{consumergroup}} {{topic}}", "refId": "A" }
+      ],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Pods in infra namespaces",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "count by (namespace) (kube_pod_status_phase{namespace=~\"postgres|redis|kong|kafka|rabbit\",phase=\"Running\"})", "legendFormat": "{{namespace}}", "refId": "A" }
+      ],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["npd", "infra"],
+  "templating": {
+    "list": [{ "name": "datasource", "type": "datasource", "query": "prometheus", "current": { "text": "Prometheus", "value": "Prometheus" } }]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "NPD Infra (PG/Redis/Kong/Kafka/Rabbit)",
+  "uid": "npd-infra",
+  "version": 1
+}

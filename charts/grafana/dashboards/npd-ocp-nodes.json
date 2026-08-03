@@ -1,0 +1,50 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "panels": [
+    {
+      "title": "Nodes Ready",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "count(kube_node_status_condition{condition=\"Ready\",status=\"true\"}==1)", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Nodes NotReady",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "count(kube_node_status_condition{condition=\"Ready\",status=\"true\"}==0) or vector(0)", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "CPU % by node",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{ "expr": "100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))", "legendFormat": "{{instance}}", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Memory % by node",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{ "expr": "100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))", "legendFormat": "{{instance}}", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Disk root % used",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "targets": [{ "expr": "100 * (1 - (node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay\",mountpoint=\"/\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay\",mountpoint=\"/\"}))", "legendFormat": "{{instance}}", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["npd", "nodes", "ocp"],
+  "templating": {
+    "list": [{ "name": "datasource", "type": "datasource", "query": "prometheus", "current": { "text": "Prometheus", "value": "Prometheus" } }]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "NPD OCP Nodes",
+  "uid": "npd-ocp-nodes",
+  "version": 1
+}

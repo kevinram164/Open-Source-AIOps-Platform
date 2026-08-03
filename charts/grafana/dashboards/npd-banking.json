@@ -1,0 +1,62 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Pods Running (npd-banking)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "count(kube_pod_status_phase{namespace=\"npd-banking\",phase=\"Running\"})", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Pods Not Ready",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "sum(kube_deployment_status_replicas_unavailable{namespace=\"npd-banking\"}) or vector(0)", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Restarts (15m)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"npd-banking\"}[15m]))", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "CPU by pod",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{ "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"npd-banking\",container!=\"\"}[5m]))", "legendFormat": "{{pod}}", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    },
+    {
+      "title": "Memory by pod",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{ "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"npd-banking\",container!=\"\"})", "legendFormat": "{{pod}}", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["npd", "banking"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "title": "NPD Banking",
+  "uid": "npd-banking",
+  "version": 1
+}

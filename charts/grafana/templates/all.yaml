@@ -77,6 +77,12 @@ spec:
               value: /tmp/grafana/logs
             - name: GF_PATHS_PLUGINS
               value: /var/lib/grafana/plugins
+            - name: THANOS_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-thanos-token
+                  key: token
+                  optional: true
           volumeMounts:
             - name: data
               mountPath: /var/lib/grafana
@@ -88,6 +94,9 @@ spec:
               readOnly: true
             - name: dashboards
               mountPath: /etc/grafana/dashboards/aiops
+              readOnly: true
+            - name: dashboards-npd
+              mountPath: /etc/grafana/dashboards/npd
               readOnly: true
             - name: tmp
               mountPath: /tmp
@@ -122,6 +131,9 @@ spec:
         - name: dashboards
           configMap:
             name: {{ include "grafana.fullname" . }}-dashboard-aiops
+        - name: dashboards-npd
+          configMap:
+            name: {{ include "grafana.fullname" . }}-dashboard-npd
         - name: tmp
           emptyDir: {}
 ---

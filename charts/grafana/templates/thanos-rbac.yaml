@@ -1,0 +1,24 @@
+# Grafana SA → đọc Thanos Querier (platform + user workload metrics)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-thanos-token
+  namespace: aiops-observability
+  annotations:
+    kubernetes.io/service-account.name: grafana
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: grafana-aiops-cluster-monitoring-view
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-monitoring-view
+subjects:
+  - kind: ServiceAccount
+    name: grafana
+    namespace: aiops-observability

@@ -16,6 +16,9 @@ data:
         jsonData:
           tlsSkipVerify: true
           timeInterval: 30s
+          httpHeaderName1: Authorization
+        secureJsonData:
+          httpHeaderValue1: Bearer $__env{THANOS_BEARER_TOKEN}
       - name: AIOps Postgres
         uid: aiops-pg
         type: postgres
@@ -52,6 +55,15 @@ data:
         allowUiUpdates: true
         options:
           path: /etc/grafana/dashboards/aiops
+      - name: npd
+        orgId: 1
+        folder: NPD
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        allowUiUpdates: true
+        options:
+          path: /etc/grafana/dashboards/npd
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -62,3 +74,19 @@ metadata:
 data:
   aiops-overview.json: |
 {{ .Files.Get "dashboards/aiops-overview.json" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grafana.fullname" . }}-dashboard-npd
+  labels:
+    {{- include "grafana.labels" . | nindent 4 }}
+data:
+  npd-banking.json: |
+{{ .Files.Get "dashboards/npd-banking.json" | indent 4 }}
+  npd-shop.json: |
+{{ .Files.Get "dashboards/npd-shop.json" | indent 4 }}
+  npd-infra.json: |
+{{ .Files.Get "dashboards/npd-infra.json" | indent 4 }}
+  npd-ocp-nodes.json: |
+{{ .Files.Get "dashboards/npd-ocp-nodes.json" | indent 4 }}
