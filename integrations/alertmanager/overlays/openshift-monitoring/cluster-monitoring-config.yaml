@@ -1,5 +1,5 @@
-# OpenShift platform monitoring — bật AlertmanagerConfig từ user namespaces.
-# Field phải nested dưới alertmanagerMain (không đặt top-level).
+# OpenShift platform monitoring — UWM + AlertmanagerConfig từ user namespaces.
+# Field enableUserWorkload + alertmanagerMain (không đặt enableUserAlertmanagerConfig top-level).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,5 +12,6 @@ metadata:
     argocd.argoproj.io/sync-wave: "-1"
 data:
   config.yaml: |
+    enableUserWorkload: true
     alertmanagerMain:
       enableUserAlertmanagerConfig: true
