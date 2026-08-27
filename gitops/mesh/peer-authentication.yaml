@@ -1,0 +1,10 @@
+# PERMISSIVE cả ns: Alertmanager / Route không có SPIFFE.
+# Không STRICT — webhook cắt incident.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: aiops-core
+spec:
+  mtls:
+    mode: PERMISSIVE

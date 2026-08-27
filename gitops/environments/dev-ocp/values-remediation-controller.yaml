@@ -1,5 +1,5 @@
 # Remediation Controller overrides — OCP lab (Phase 4 complete)
-replicaCount: 1
+replicaCount: 0  # lab: nhả CPU cho Istio Ambient
 
 image:
   repository: harbor-platform.apps.ocp01.npd.co/aiops/remediation-controller

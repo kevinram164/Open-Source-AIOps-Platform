@@ -1,0 +1,91 @@
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: aiops-core
+spec: {}
+---
+# Alertmanager webhook + Route UI
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-ingress-incident-api
+  namespace: aiops-core
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: incident-api
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            ports: ["8080"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-console-to-incident-api
+  namespace: aiops-core
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: incident-api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/aiops-core/sa/aiops-console
+              - cluster.local/ns/aiops-core/sa/rca-agent
+      to:
+        - operation:
+            ports: ["8080"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-rca-to-ollama
+  namespace: aiops-core
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ollama
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/aiops-core/sa/rca-agent"]
+      to:
+        - operation:
+            ports: ["11434"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-route-to-console
+  namespace: aiops-core
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aiops-console
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            ports: ["8080"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-observability-scrape
+  namespace: aiops-core
+spec:
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - observability
+              - openshift-monitoring
+              - aiops-observability
+# Không ALLOW RCA/remediation gọi API banking/shop/movie.

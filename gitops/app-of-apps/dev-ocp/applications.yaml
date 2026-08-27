@@ -111,3 +111,30 @@ spec:
   syncPolicy:
     syncOptions:
       - CreateNamespace=false
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aiops-mesh
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: open-aiops-platform
+    app.kubernetes.io/component: mesh
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  project: aiops-platform
+  source:
+    repoURL: https://github.com/kevinram164/Open-Source-AIOps-Platform.git
+    targetRevision: main
+    path: gitops/mesh
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: aiops-core
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true

@@ -1,5 +1,5 @@
 # RCA Agent overrides — OCP lab (Harbor + shared OpenAI secret)
-replicaCount: 1
+replicaCount: 0  # lab: nhả CPU cho Istio Ambient
 
 image:
   repository: harbor-platform.apps.ocp01.npd.co/aiops/rca-agent

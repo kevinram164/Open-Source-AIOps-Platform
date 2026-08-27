@@ -21,7 +21,7 @@ metadata:
   annotations:
     aiops.platform/ollama-datadir: "v8-num-parallel-1"
 spec:
-  replicas: 1
+  replicas: 0  # lab: nhả 1 CPU cho istiod; bật lại = 1
   selector:
     matchLabels:
       app.kubernetes.io/name: ollama

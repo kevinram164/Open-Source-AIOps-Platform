@@ -1,0 +1,9 @@
+# Merge label Ambient vào ns đã có (bootstrap). Không enroll aiops-automation.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aiops-core
+  labels:
+    istio-discovery: enabled
+    istio.io/dataplane-mode: ambient
+    app.kubernetes.io/part-of: open-aiops-platform
