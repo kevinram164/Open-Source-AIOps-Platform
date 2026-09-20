@@ -5,5 +5,5 @@ metadata:
   name: aiops-core
   labels:
     istio-discovery: enabled
-    istio.io/dataplane-mode: ambient
+    # Không Ambient cả ns (Route Grafana/webhook). Bật từng deploy khi enroll.
     app.kubernetes.io/part-of: open-aiops-platform

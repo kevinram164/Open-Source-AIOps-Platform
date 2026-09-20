@@ -94,3 +94,13 @@ data:
 {{ .Files.Get "dashboards/npd-infra.json" | indent 4 }}
   npd-ocp-nodes.json: |
 {{ .Files.Get "dashboards/npd-ocp-nodes.json" | indent 4 }}
+  npd-ocp-infra-node-infrastructure.json: |
+{{ .Files.Get "dashboards/npd-ocp-infra-node-infrastructure.json" | indent 4 }}
+  npd-ocp-infra-disk-storage.json: |
+{{ .Files.Get "dashboards/npd-ocp-infra-disk-storage.json" | indent 4 }}
+  npd-ocp-infra-network.json: |
+{{ .Files.Get "dashboards/npd-ocp-infra-network.json" | indent 4 }}
+  npd-ocp-infra-openshift-cluster.json: |
+{{ .Files.Get "dashboards/npd-ocp-infra-openshift-cluster.json" | indent 4 }}
+  npd-ocp-infra-control-plane-etcd.json: |
+{{ .Files.Get "dashboards/npd-ocp-infra-control-plane-etcd.json" | indent 4 }}
